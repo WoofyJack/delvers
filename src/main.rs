@@ -3,12 +3,14 @@
 // paths ugh
 // Interface
 // Modifiers
+// Could be fun to add some tests.
 
 #![allow(dead_code)]
 use rand::Rng;
 use std::ops::Add;
 use std::fmt::{self, Debug};
 use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug,Copy,Clone,Eq, Hash, PartialEq)]
 struct Coordinate(i8, i8);
@@ -24,23 +26,35 @@ impl fmt::Display for Coordinate {
     }
 }
 
-#[derive(Debug)]
 struct Delver {
-    name: String,
-    exploriness: f32,
-    fightiness: f32,
-    speediness: f32,
+    base:BaseDelver,
     hp:i8,
-
-    alive:bool // might be wise to do as an enum to avoid accidentally using dead delvers.
+    active:bool
 }
-
 impl Delver {
     fn new_delver(name: String) -> Delver{
-        Delver {name, exploriness:0.5, fightiness:0.5, speediness:0.5, hp:3, alive:true}
+        Delver{ base: BaseDelver::new_delver(name), hp: 5, active:true }
     }
 }
 impl fmt::Display for Delver {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.base.fmt(f)
+    }
+}
+#[derive(Deserialize, Serialize)]
+struct BaseDelver {
+    name: String,
+    exploriness: f32,
+    fightiness: f32,
+    speediness: f32
+}
+
+impl BaseDelver {
+    fn new_delver(name: String) -> BaseDelver{
+        BaseDelver {name, exploriness:0.5, fightiness:0.5, speediness:0.5}
+    }
+}
+impl fmt::Display for BaseDelver {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.name)
     }
@@ -124,6 +138,8 @@ fn main() {
     let mut game_state = Game::new_game(delvers, dungeon, rooms);
     
     let c = Delver::new_delver(String::from("Rogue"));
+    let f =serde_json::to_string(&c.base).unwrap();
+    println!("{}", f);
     game_state.delvers.push(c);
     let c = Delver::new_delver(String::from("Fighter"));
     game_state.delvers.push(c);
@@ -152,11 +168,13 @@ fn roll(rng: &mut impl Rng, stat:f32) -> f32 {
 
 fn tick(game:&mut Game, rng:&mut impl Rng) -> () {
     let active_delver = &game.delvers[game.delver_index as usize];
-    if !active_delver.alive {game.increment_delver(); return tick(game, rng);}
-
-    let mut current_room: &mut Room = match game.rooms.get_mut(&game.delver_position) {
+    if !active_delver.active {
+        game.increment_delver(); return tick(game, rng); // Could go infinite, should add some protections at the start.
+    }
+    let mut current_room: &mut Room = 
+    match game.rooms.get_mut(&game.delver_position) {
         Some(n) => n,
-        None => {game.delver_position = Coordinate(0,0); return tick(game, rng);} //Replace with some special case room, a la hall of flames.
+        None => {game.delver_position = Coordinate(0,0); return tick(game, rng);} //TODO: Replace with some special case room, a la hall of flames.
     };
 
     match game.phase {
@@ -174,7 +192,7 @@ fn tick(game:&mut Game, rng:&mut impl Rng) -> () {
             else {
                 game.phase = GamePhase::TurnStart;
                 // Do encounter rolls
-                if roll(rng, active_delver.fightiness) > roll(rng, game.dungeon.deadliness) {
+                if roll(rng, active_delver.base.fightiness) > roll(rng, game.dungeon.deadliness) {
                     current_room.complete = true;
                     game.last_log_message = active_delver.to_string() + " clears room at " + &game.delver_position.to_string(); // Move this to an event.
                 } else {
@@ -190,7 +208,7 @@ fn tick(game:&mut Game, rng:&mut impl Rng) -> () {
         GamePhase::Travel => {
             game.phase = GamePhase::TurnStart;
             // Do Travel stuff
-            if roll(rng, active_delver.speediness) > roll(rng, game.dungeon.lengthiness) {
+            if roll(rng, active_delver.base.speediness) > roll(rng, game.dungeon.lengthiness) {
                 let position = game.delver_position + Coordinate(1,0);
                 game.events.push(Event::Move {delver_index:game.delver_index, position});
                 game.last_log_message = active_delver.to_string() + " guides the delvers to " + &position.to_string();
@@ -217,8 +235,8 @@ fn resolve_last_event(game:&mut Game) {
             game.last_log_message = game.delvers[delver_index as usize].to_string() + " takes damage, bringing them down to " + &game.delvers[delver_index as usize].hp.to_string() + " hp";
         }
         Event::Death { delver_index} => {
-            game.delvers[delver_index as usize].alive = false;
-            let alive_delvers = game.delvers.iter().any(|r| r.alive);
+            game.delvers[delver_index as usize].active = false;
+            let alive_delvers = game.delvers.iter().any(|r| r.active);
             if !alive_delvers {
                 game.events.push(Event::EndGame);
             }
