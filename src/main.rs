@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use rand::Rng;
 use std::ops::Add;
-use std::fmt;
+use std::fmt::{self, Debug};
 use std::collections::HashMap;
 
 #[derive(Debug,Copy,Clone,Eq, Hash, PartialEq)]
@@ -37,7 +37,7 @@ impl fmt::Display for Delver {
     }
 }
 
-
+#[derive(PartialEq, Eq)]
 enum GamePhase {
     NotStarted,
     TurnStart,
@@ -62,17 +62,27 @@ struct Game {
     delver_index:u8,
     rooms: HashMap<Coordinate, Room>,
     delver_position:Coordinate,
+
+    events:Vec<Event>,
     last_log_message:String,
 }
+
 impl Game {
     fn new_game(delvers: Vec<Delver>, rooms: HashMap<Coordinate,Room>) -> Game {
         Game {phase:GamePhase::NotStarted,
             delver_index:0u8,
             delvers, rooms,
             delver_position: Coordinate(0,0),
+            events:Vec::new(),
             last_log_message:String::from("")
         }
     }
+}
+enum Event {
+    Damage {delver_index:u8, amount:i8},
+    Move {delver_index:u8, position:Coordinate},
+    Death {delver_index:u8},
+    EndGame
 }
 fn main() {
     let mut rng = rand::thread_rng();
@@ -86,12 +96,20 @@ fn main() {
     let c = Delver::new_delver(String::from("Fighter"));
     game_state.delvers.push(c);
 
-    game_state.rooms.insert(Coordinate(0,0), Room::new_room());
-    game_state.rooms.insert(Coordinate(1,0), Room::new_room());
-    game_state.rooms.insert(Coordinate(2,0), Room::new_room());
-
-    for _ in 0..10 {
-    tick(&mut game_state, &mut rng);
+    for i in 0..5 {
+        game_state.rooms.insert(Coordinate(i,0), Room::new_room());
+    }
+    while game_state.phase != GamePhase::Finished{
+        while game_state.last_log_message == "" && game_state.events.len() == 0 {
+            tick(&mut game_state, &mut rng);            
+        }
+        if game_state.last_log_message != "" {
+        println!("{}", game_state.last_log_message);
+        game_state.last_log_message = String::from("");
+        }
+        else if game_state.events.len() > 0 {
+            resolve_last_event(&mut game_state)
+        }
     }
 }
 
@@ -101,7 +119,10 @@ fn roll(rng: &mut impl Rng) -> f32 {
 
 fn tick(game:&mut Game, rng:&mut impl Rng) -> () {
     let active_delver = &game.delvers[game.delver_index as usize];
-    let mut current_room: &mut Room = game.rooms.get_mut(&game.delver_position).expect("Handle Error later");
+    let mut current_room: &mut Room = match game.rooms.get_mut(&game.delver_position) {
+        Some(n) => n,
+        None => {game.delver_position = Coordinate(0,0); return tick(game, rng);} //Replace with some special case room, a la hall of flames.
+    };
 
     match game.phase {
         GamePhase::NotStarted => {
@@ -120,7 +141,7 @@ fn tick(game:&mut Game, rng:&mut impl Rng) -> () {
                 game.phase = GamePhase::TurnStart;
                 // Do encounter rolls
                 current_room.complete = true;
-                println!("{}", active_delver);
+                game.last_log_message = active_delver.to_string() + " clears room at " + &game.delver_position.to_string(); // Move this to an event.
             }
         }
         GamePhase::Forge => {
@@ -130,9 +151,29 @@ fn tick(game:&mut Game, rng:&mut impl Rng) -> () {
         GamePhase::Travel => {
             game.phase = GamePhase::TurnStart;
             // Do Travel stuff
-            game.delver_position = game.delver_position + Coordinate(1,0);
-            println!("{}",game.delver_position);
+            let position = game.delver_position + Coordinate(1,0);
+            game.events.push(Event::Move {delver_index:game.delver_index, position});
+
         }
         GamePhase::Finished => {}
+    }
+}
+
+fn resolve_last_event(game:&mut Game) {
+    let event = match game.events.pop() {
+        Some(n) => n,
+        None => return
+    };
+    match event {
+        Event::Damage {delver_index, amount } => { game.delvers[delver_index as usize].hp -= amount;}
+        Event::Death { delver_index} => {game.delvers.remove(delver_index as usize);}
+        Event::Move {delver_index, position } => {
+            game.delver_position = position;
+            if game.delver_position.0 == 4 { // temporary, need to implement new conditions. 
+                game.events.push(Event::EndGame)
+            }
+            game.last_log_message = game.delvers[delver_index as usize].to_string() + " guides the delvers to " + &game.delver_position.to_string();
+        }
+        Event::EndGame => {game.phase = GamePhase::Finished; println!("Game Ended")}
     }
 }
