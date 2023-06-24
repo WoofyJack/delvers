@@ -7,9 +7,11 @@
 
 #![allow(dead_code)]
 use rand::Rng;
+use serde_json::{Value, Map};
 use std::ops::Add;
 use std::fmt::{self, Debug};
 use std::collections::HashMap;
+use std::fs;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug,Copy,Clone,Eq, Hash, PartialEq)]
@@ -34,6 +36,12 @@ struct Delver {
 impl Delver {
     fn new_delver(name: String) -> Delver{
         Delver{ base: BaseDelver::new_delver(name), hp: 5, active:true }
+    }
+    fn load_delver(base: BaseDelver) -> Delver {
+        Delver { base, hp: 5, active: true }
+    }
+    fn to_json(self) -> String {
+        serde_json::to_string(&self.base).unwrap()
     }
 }
 impl fmt::Display for Delver {
@@ -60,6 +68,7 @@ impl fmt::Display for BaseDelver {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 struct Dungeon {
     name: String,
     twistiness: f32,
@@ -118,8 +127,8 @@ impl Game {
     }
     fn increment_delver(&mut self) {
         self.delver_index += 1;
-        if self.delver_index >= self.delvers.len().try_into()// Converts len() into a u8. Shouldn't be possible to get 256 delvers, but should add in error handling.
-        .expect("Impossibly many delvers. Handle later.") {self.delver_index = 0;}
+        if self.delver_index >= self.delvers.len().try_into().unwrap()// Converts len() into a u8. Shouldn't be possible to get 256 delvers, but should add in error handling.
+            {self.delver_index = 0;}
     }
 }
 enum Event {
@@ -129,6 +138,21 @@ enum Event {
     EndGame
 }
 
+#[derive(Deserialize, Serialize)]
+struct Team {
+    team_name:String,
+    delvers:Vec<BaseDelver>,
+    dungeon:Dungeon
+}
+impl Team {
+    fn load_from_file(file:&str,index:usize) -> Team {
+        let contents = fs::read_to_string(file).unwrap();
+        let teams:Value = serde_json::from_str(&contents).unwrap();
+        let mut teams:Vec<Value> = teams.as_array().unwrap().to_owned();
+        serde_json::from_value(teams[index].take()).unwrap()
+    }
+}
+
 fn main() {
     let mut rng = rand::thread_rng();
 
@@ -136,13 +160,12 @@ fn main() {
     let rooms: HashMap<Coordinate, Room> = HashMap::new();
     let dungeon = Dungeon::new_dungeon(String::from("The Dungeon"));
     let mut game_state = Game::new_game(delvers, dungeon, rooms);
-    
-    let c = Delver::new_delver(String::from("Rogue"));
-    let f =serde_json::to_string(&c.base).unwrap();
-    println!("{}", f);
-    game_state.delvers.push(c);
-    let c = Delver::new_delver(String::from("Fighter"));
-    game_state.delvers.push(c);
+
+    let team = Team::load_from_file("Teams.json", 0);
+    for c in team.delvers {
+        let c:Delver = Delver::load_delver(c);
+        game_state.delvers.push(c);
+    }
 
     for i in 0..5 {
         game_state.rooms.insert(Coordinate(i,0), Room::new_room());
