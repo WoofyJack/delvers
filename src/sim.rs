@@ -3,6 +3,10 @@ use crate::locations::{Coordinate, Room};
 use crate::teams::{Dungeon, Delver};
 use std::collections::HashMap;
 
+use std::{thread, time};
+
+use colored::Colorize;
+
 pub struct  Sim {
     pub game: Game,
     pub finished:bool
@@ -13,13 +17,36 @@ impl Sim {
             Game::tick(&mut self.game, rng);            
         }
         if self.game.last_log_message != "" {
-                println!("{}", self.game.last_log_message);
+                self.render();
+                // println!("{}", self.game.last_log_message);
                 self.game.last_log_message = String::from("");
         }
         else if self.game.events.len() > 0 {
             Game::resolve_last_event(&mut self.game)
         };
         self.game.phase != GamePhase::Finished
+    }
+    pub fn render(&self) {
+        let waittime = time::Duration::from_secs(3);
+        for p in &self.game.delvers {
+            let delvername = if p.active {p.base.name.normal()} else {p.base.name.truecolor(100,100,100)};
+            print!("{}: ",delvername);
+
+            let active = "O".red();
+            let inactive = "O";
+            for i in 0..5 {
+                if i+1 <= p.hp {
+                    print!("{}", active);
+                }
+                else{
+                    print!("{}", inactive);
+                }
+            }
+            println!();
+        }
+        println!("{}", self.game.last_log_message);
+        thread::sleep(waittime);
+        println!()
     }
 }
 
