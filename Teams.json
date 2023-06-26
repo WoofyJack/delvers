@@ -1,0 +1,15 @@
+[
+    {
+        "team_name":"The Baltimore Crabs",
+        "delvers": [
+            {"name":"Rogue","exploriness":0.5,"fightiness":0.5,"speediness":0.5},
+            {"name":"Fighter","exploriness":0.5,"fightiness":0.5,"speediness":0.5}
+        ],
+        "dungeon" : {
+            "name":"The Crabitat",
+            "twistiness":0.5,
+            "deadliness":0.5,
+            "lengthiness":0.5
+        }
+    }
+]
