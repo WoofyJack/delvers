@@ -9,13 +9,17 @@
 mod teams;
 mod sim;
 mod locations;
+mod modifiers;
 
 
 use std::collections::HashMap;
 
+use sim::EventQueue;
+
 use crate::teams::{Delver, Dungeon, Team};
 use crate::locations::{Coordinate, Room};
 use crate::sim::{Game, Sim};
+use crate::modifiers::{Pheonix};
 
 
 fn main() {
@@ -24,7 +28,9 @@ fn main() {
 
     let mut delvers = Vec::new();
     for c in team.delvers {
-        let c:Delver = Delver::load_delver(c);
+        let mut c:Delver = Delver::load_delver(c);
+        let pheonix = Pheonix;
+        c.modifiers.push(Box::new(pheonix));
         delvers.push(c);
     }
     let mut rooms: HashMap<Coordinate, Room> = HashMap::new();
@@ -33,11 +39,10 @@ fn main() {
     }
     let dungeon = Dungeon::new_dungeon(String::from("The Dungeon"));
     let game = Game::new_game(delvers, dungeon, rooms);
-
-    let mut sim = Sim {game, finished:false};
+    let mut sim = Sim {game, finished:false, eventqueue:EventQueue::new_queue()};
 
     loop {
-        if !sim.tick(&mut rng) {
+        if !sim.next_frame(&mut rng) {
             break
         }
 

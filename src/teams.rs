@@ -3,6 +3,8 @@ use std::fmt;
 use serde_json::{Value};
 use std::fs;
 
+use crate::modifiers::Modifier;
+
 #[derive(Deserialize, Serialize)]
 pub struct Team {
     pub team_name:String,
@@ -21,14 +23,15 @@ impl Team {
 pub struct Delver {
     pub base:BaseDelver,
     pub hp:i8,
-    pub active:bool
+    pub active:bool,
+    pub modifiers:Vec<Box<dyn Modifier>> // Janky,
 }
 impl Delver {
     fn new_delver(name: String) -> Delver{
-        Delver{ base: BaseDelver::new_delver(name), hp: 5, active:true }
+        Delver{ base: BaseDelver::new_delver(name), hp: 5, active:true, modifiers: Vec::new()}
     }
     pub fn load_delver(base: BaseDelver) -> Delver {
-        Delver { base, hp: 5, active: true }
+        Delver { base, hp: 5, active: true, modifiers:Vec::new()}
     }
     fn to_json(self) -> String {
         serde_json::to_string(&self.base).unwrap()
