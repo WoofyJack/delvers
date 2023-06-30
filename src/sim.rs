@@ -1,7 +1,7 @@
 use rand::Rng;
 use crate::locations::{Coordinate, Room};
 use crate::modifiers::{Outcomes, ReplaceOutcomes};
-use crate::teams::{Dungeon, DelverStats, GameTeam};
+use crate::teams::{Dungeon, DelverStats, GameTeam, Delver};
 use std::collections::HashMap;
 
 use std::{thread, time};
@@ -167,7 +167,7 @@ impl Sim {
                 let fail = Event::comment_event(EventType::Damage {amount: 1}.target(delver_index), message);
                 
                 let outcomes = Outcomes{success, fail};
-                let event = EventType::Roll { difficulty: roll(rng, self.game.dungeon.lengthiness*100.0), stat: DelverStats::Speediness, outcomes}.no_target();
+                let event = EventType::Roll { difficulty: roll(rng, self.game.dungeon.lengthiness), stat: DelverStats::Speediness, outcomes}.no_target();
                 self.eventqueue.events.push(event);
             }
             GamePhase::Finished => {}
@@ -271,8 +271,11 @@ impl Sim {
             }
             // Complex events: Cannot have post_events, because their insides are often consumed.
             EventType::Roll { difficulty, stat, outcomes} => {
-                let delver = self.game.delverteam.choose_delver(stat);
-                let mut pushes = outcomes.get(roll(rng,delver.get_stat(stat)) > difficulty);
+                let active_delver = self.game.delverteam.choose_delver(stat);
+                
+                let total_stat = Delver::collect_stats(active_delver, &self.game.delverteam.delvers, stat);
+
+                let mut pushes = outcomes.get(roll(rng, total_stat) > difficulty);
                 self.eventqueue.events.append(&mut pushes); //RENAME VARIABLES
                 return
             }

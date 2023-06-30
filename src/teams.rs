@@ -76,6 +76,14 @@ impl Delver {
     pub fn to_json(&self) -> String {
         serde_json::to_string(&self.base).unwrap()
     }
+    pub fn collect_stats(active_delver:&Delver, all_delvers:&Vec<Delver>, stat:DelverStats) -> f32 {
+        let mut total = 0.0;
+        total += active_delver.get_stat(stat) * 0.5; // Active_delver should be in party, so 0.25 will also get added.
+        for d in all_delvers {
+            total += d.get_stat(stat) * 0.25;
+        }
+        total
+    }
     pub fn get_stat(&self, stat:DelverStats) -> f32 {
         match stat {
             DelverStats::Exploriness => self.base.exploriness,

@@ -19,7 +19,6 @@ use sim::EventQueue;
 use crate::teams::{BaseTeam, GameTeam};
 use crate::locations::{Coordinate, Room};
 use crate::sim::{Game, Sim};
-use crate::modifiers::{Pheonix};
 
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
