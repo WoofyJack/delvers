@@ -9,7 +9,8 @@ use crate::{modifiers::{Modifier, PermanentModifiers}};
 pub struct BaseTeam {
     pub team_name:String,
     delvers:Vec<BaseDelver>, //This is emptied when put into GameTeam
-    pub dungeon:Dungeon
+    pub dungeon:Dungeon,
+    defenders:Vec<BaseDefender>
 }
 impl BaseTeam {
     pub fn load_from_file(file:&str,index:usize) -> BaseTeam {
@@ -20,7 +21,17 @@ impl BaseTeam {
     }
 }
 
-pub struct GameTeam {
+pub struct DefenderTeam {
+    pub defender:Defender,
+    pub dungeon:Dungeon
+}
+impl DefenderTeam {
+    pub fn load_team(base: &BaseTeam) -> DefenderTeam {
+        let defender = Defender::load_defender(base.defenders[0].clone());
+        DefenderTeam { defender, dungeon:base.dungeon.clone() }
+    }
+}
+pub struct DelverTeam {
     pub delvers:Vec<Delver>,
     pub fighter:usize,
     pub nimble:usize,
@@ -28,14 +39,14 @@ pub struct GameTeam {
     pub support:usize
     // Healer, etc.
 }
-impl GameTeam {
-    pub fn load_team(base: &BaseTeam) -> GameTeam {
+impl DelverTeam {
+    pub fn load_team(base: &BaseTeam) -> DelverTeam {
         let mut delvers = Vec::new();
         delvers.push(Delver::load_delver(base.delvers[0].clone()));
         delvers.push(Delver::load_delver(base.delvers[1].clone()));
         delvers.push(Delver::load_delver(base.delvers[2].clone()));
         delvers.push(Delver::load_delver(base.delvers[3].clone()));
-        GameTeam {delvers, fighter:0, nimble:1, magic:2, support:3}
+        DelverTeam {delvers, fighter:0, nimble:1, magic:2, support:3}
     }
     pub fn get_index(&self, delver:&Delver) -> Option<usize> {
         let mut result = Option::None;
@@ -72,7 +83,7 @@ pub struct Delver {
     pub base: BaseDelver,
     pub hp:i8,
     pub active:bool,
-    pub modifiers:Vec<Box<dyn Modifier>> // Janky,
+    pub modifiers:Vec<Box<dyn Modifier>>
 }
 impl Delver {
     // fn new_delver(name: String) -> Delver{
@@ -103,17 +114,18 @@ impl Delver {
             DelverStats::Speediness => self.base.speediness
         };
         for m in &self.modifiers {
-            statvalue = m.get_stat(stat, statvalue)
+            statvalue = m.get_delver_stat(stat, statvalue)
         };
         statvalue
     }
 }
+
 impl fmt::Display for Delver {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.base.fmt(f)
     }
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy,Debug)]
 pub enum DelverStats {
     Exploriness,
     Fightiness,
@@ -137,12 +149,69 @@ impl BaseDelver {
         Delver::load_delver(self)
     }
 }
+
 impl fmt::Display for BaseDelver {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.name)
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum DefenderStats {
+    Fightiness
+}
+
+pub struct Defender {
+    pub base: BaseDefender,
+    pub hp:i8,
+    pub active:bool,
+    pub modifiers:Vec<Box<dyn Modifier>>
+}
+impl Defender {
+    pub fn load_defender (base: BaseDefender) -> Defender {
+        let mut modifiers = Vec::new();
+        for i in &base.perm_mods {
+            modifiers.push(PermanentModifiers::to_game_mod(i));
+        }
+        Defender {base, hp: 5, active: true, modifiers}
+    }
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(&self.base).unwrap()
+    }
+    pub fn get_stat(&self, stat:DefenderStats) -> f32 {
+        let mut statvalue =  match stat {
+            DefenderStats::Fightiness => self.base.fightiness
+        };
+        for m in &self.modifiers {
+            statvalue = m.get_defender_stat(stat, statvalue)
+        };
+        statvalue
+    }
+}
+impl fmt::Display for Defender {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.base.fmt(f)
+    }
+}
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct BaseDefender {
+    pub name: String,
+    pub fightiness: f32,
+    pub perm_mods: Vec<PermanentModifiers>
+}
+impl BaseDefender {
+    pub fn new_delver(name: String) -> BaseDefender{
+        BaseDefender {name, fightiness:0.5, perm_mods:Vec::new()}
+    }
+    pub fn to_game_defender(self) -> Defender {
+        Defender::load_defender(self)
+    }
+}
+impl fmt::Display for BaseDefender {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
 #[derive(Deserialize, Serialize, Clone)]
 pub struct Dungeon {
     pub name: String,

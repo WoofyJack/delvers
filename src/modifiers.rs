@@ -1,7 +1,7 @@
 
 use serde::{Serialize, Deserialize};
 
-use crate::{sim::{Event, EventType, Game, EventQueue}, teams::DelverStats};
+use crate::{sim::{Event, EventType, Game, EventQueue, Target}, teams::{DelverStats, DefenderStats}};
 
 
 #[derive(Clone, Copy, Serialize, Deserialize, Debug)]
@@ -22,8 +22,9 @@ pub trait Modifier {
     fn replace_event(&self, event:Event, _game:&Game, _queue:&mut EventQueue) -> ReplaceOutcomes {ReplaceOutcomes::Event {event}}
     fn pre_event(&self, _event:&Event, _game:&Game, _queue:&mut EventQueue) {}
     fn post_event(&self, _event:&Event, _game:&Game, _queue:&mut EventQueue) {}
-    fn get_stat(&self, _stat:DelverStats, statvalue:f32) -> f32 {statvalue}
-}
+    fn get_delver_stat(&self, _stat:DelverStats, statvalue:f32) -> f32 {statvalue}
+    fn get_defender_stat(&self, _stat:DefenderStats, statvalue:f32) -> f32 {statvalue}
+    }
 
 pub enum ReplaceOutcomes{
     Stop,
@@ -47,6 +48,7 @@ impl OutcomesWithImmediate {
         }
     }
 }
+#[derive(Debug)]
 pub struct Outcomes {
     pub success:Vec<Event>,
     pub fail:Vec<Event>
@@ -65,15 +67,19 @@ impl Outcomes {
 pub struct Pheonix;
 impl Modifier for Pheonix { // I guess just allow modifiers to do their own rolls. No, trait objects don't like being passed rng.
     fn replace_event(&self, event:Event, game:&Game, _queue:&mut EventQueue) -> ReplaceOutcomes {
-        let delver_index = event.target_index.unwrap();
-        let failmessage = String::from(game.delverteam.delvers[delver_index].to_string()) + " fails to defy death!";
-        let successmessage= String::from(game.delverteam.delvers[delver_index].to_string()) + " defies death!";
+        let target_name = match event.target {
+            Target::Delver { index } => game.delverteam.delvers[index].to_string(),
+            Target::Defender => game.defenderteam.defender.to_string(),
+            _ => "".to_string()
+        };
+        let failmessage = target_name.clone() + "'s Pheonix fails. Their ashes scatter to the wind.";
+        let successmessage= target_name + "'s Pheonix activates. They are reborn from their ashes!";
         match event.event_type {
             EventType::Death => {
                 let outcomes = OutcomesWithImmediate{
+                immediate_success:EventType::Heal {amount: 5 }.target(event.target),
                 immediate_fail: event,
                 fail:vec![EventType::Log {message:failmessage}.no_target()],
-                immediate_success:EventType::Heal {amount: 5 }.target(delver_index),
                 success:vec![EventType::Log { message: successmessage}.no_target(), ]
                 };
                 ReplaceOutcomes::Chance { chance: 0.25, outcomes: outcomes }
@@ -81,9 +87,15 @@ impl Modifier for Pheonix { // I guess just allow modifiers to do their own roll
             _ => ReplaceOutcomes::Event {event}
         }
     }
-    fn get_stat(&self, stat:DelverStats, statvalue:f32) -> f32 {
+    fn get_delver_stat(&self, stat:DelverStats, statvalue:f32) -> f32 {
         match stat {
             DelverStats::Fightiness => statvalue * 1.1,
+            _ => statvalue
+        }
+    }
+    fn get_defender_stat(&self, stat:DefenderStats, statvalue:f32) -> f32 {
+        match stat {
+            DefenderStats::Fightiness => statvalue * 1.1,
             _ => statvalue
         }
     }

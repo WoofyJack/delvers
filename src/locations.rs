@@ -1,7 +1,7 @@
 use std::ops::Add;
 use std::fmt;
 
-use crate::{sim::{Event,EventType,Game,EventQueue}, teams::{DelverStats}, modifiers::Outcomes};
+use crate::{sim::{Event,EventType,Game,EventQueue}, teams::{DelverStats, Delver, Defender}, modifiers::Outcomes};
 
 pub struct Room {
     pub complete:bool,
@@ -27,8 +27,18 @@ impl RoomType for Trapped {
         let trigger_delver = &game.delverteam.delvers[trigger_index];
         let outcomes = Outcomes {
             success: Event::comment_event((EventType::ClearRoom {room_position}).no_target(),active_delver.to_string() + " clears a trapped room"),
-            fail: Event::comment_event((EventType::Damage {amount: 1 }).target(trigger_index), trigger_delver.to_string() + " triggers a trapped room, hurting themselves")};
+            fail: Event::comment_event((EventType::Damage {amount: 1 }).target_delver(trigger_index), trigger_delver.to_string() + " triggers a trapped room, hurting themselves")};
         _queue.events.push((EventType::Roll {difficulty: 0.25, stat: self.base_stat(), outcomes}).no_target())
+    }
+    fn base_stat(&self) -> DelverStats {
+        DelverStats::Fightiness
+    }
+}
+pub struct BossFight;// {pub boss:&'static Defender}
+impl RoomType for BossFight {
+    fn attempt_clear(&self, _game:&Game,  room_position:Coordinate, _delver_index:usize, queue:&mut EventQueue) {
+        let event = EventType::BossFight {room_position }.no_target();
+        queue.events.push(event);
     }
     fn base_stat(&self) -> DelverStats {
         DelverStats::Fightiness

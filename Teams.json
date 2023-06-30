@@ -12,6 +12,21 @@
             "twistiness":0.5,
             "deadliness":0.5,
             "lengthiness":0.5
-        }
+        },
+        "defenders": []
+    },
+    {
+        "team_name":"The Antalya Pirates",
+        "delvers": [],
+        "dungeon" : {
+            "name":"The Wayfarer",
+            "twistiness":0.5,
+            "deadliness":0.5,
+            "lengthiness":0.5
+        },
+        "defenders": [
+            {"name":"Tia Brie","fightiness":0.8,"perm_mods":["Pheonix"]}
+        ]
     }
+
 ]
