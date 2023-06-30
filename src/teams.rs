@@ -36,12 +36,25 @@ impl Delver {
     fn to_json(self) -> String {
         serde_json::to_string(&self.base).unwrap()
     }
+    pub fn get_stat(&self, stat:DelverStats) -> f32 {
+        match stat {
+            DelverStats::Exploriness => self.base.exploriness,
+            DelverStats::Fightiness => self.base.fightiness,
+            DelverStats::Speediness => self.base.speediness
+        }
+    }
 }
 impl fmt::Display for Delver {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.base.fmt(f)
     }
 }
+pub enum DelverStats {
+    Exploriness,
+    Fightiness,
+    Speediness
+}
+
 #[derive(Deserialize, Serialize)]
 pub struct BaseDelver {
     pub name: String,

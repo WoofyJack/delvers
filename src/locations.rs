@@ -1,7 +1,7 @@
 use std::ops::Add;
 use std::fmt;
 
-use crate::sim::{Event,Game,EventQueue};
+use crate::{sim::{Event,Game,EventQueue}, teams::{DelverStats, Delver}, modifiers::Outcomes};
 
 pub struct Room {
     pub complete:bool,
@@ -13,13 +13,23 @@ impl Room {
     }
 }
 pub trait RoomType {
-    fn on_enter(&self,  _room:&Room, _queue:&mut EventQueue) {}
-    fn attempt_clear(&self,  room:&mut Room, _queue:&mut EventQueue) { room.complete = true;} //Passing both self and room is janky. Need self for dyn to work.
-    fn on_exit(&self,  _room:&Room, _queue:&mut EventQueue) {}
+    fn on_enter(&self,  _room_position:Coordinate, _queue:&mut EventQueue) {}
+    fn attempt_clear(&self,  room_position:Coordinate, _delver_index:u8, queue:&mut EventQueue) {queue.events.push(Event::ClearRoom {room_position});}
+    fn on_exit(&self,  _room_position:Coordinate, _queue:&mut EventQueue) {}
+    fn base_stat(&self) -> DelverStats;
 }
 
 pub struct Trapped;
 impl RoomType for Trapped {
+    fn attempt_clear(&self,  room_position:Coordinate, delver_index:u8, _queue:&mut EventQueue) {
+        let outcomes = Outcomes {
+            success: Event::comment_event(Event::ClearRoom {room_position}, "Trapped room cleared".to_string()),
+            fail: Event::comment_event(Event::Damage { delver_index, amount: 1 }, "Trapped room triggered".to_string())};
+        _queue.events.push(Event::Roll {difficulty: 0.25, stat: self.base_stat(), outcomes })
+    }
+    fn base_stat(&self) -> DelverStats {
+        DelverStats::Fightiness
+    }
 }
 
 #[derive(Debug,Copy,Clone,Eq, Hash, PartialEq)]

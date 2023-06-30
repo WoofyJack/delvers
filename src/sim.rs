@@ -1,7 +1,7 @@
 use rand::Rng;
 use crate::locations::{Coordinate, Room};
-use crate::modifiers::{Outcomes, ReplaceOutcomes};
-use crate::teams::{Dungeon, Delver};
+use crate::modifiers::{OutcomesWithImmediate, Outcomes, ReplaceOutcomes};
+use crate::teams::{Dungeon, Delver, DelverStats};
 use std::collections::HashMap;
 
 use std::{thread, time};
@@ -22,8 +22,14 @@ pub enum Event {
     EndGame,
     Log {message:String},
     // Roll {difficulty:f32, stat:} //Figure this out later.
-    ClearRoom {room:Room},
+    Roll {difficulty:f32, stat:DelverStats, outcomes:Outcomes},
+    ClearRoom {room_position:Coordinate},
     Cancelled
+}
+impl Event {
+    pub fn comment_event(event:Event, message:String) -> Vec<Event> {
+        vec![event, Event::Log { message }]
+    }
 }
 pub struct EventQueue {
     pub events:Vec<Event> //Probably doesnt need to be a struct. Fix later.
@@ -123,13 +129,14 @@ impl Sim {
                 else {
                     self.game.phase = GamePhase::TurnStart;
                     // Do encounter rolls
-                    if roll(rng, active_delver.base.fightiness) > roll(rng, self.game.dungeon.deadliness*10.0) {
-                        current_room.complete = true;
-                        self.game.last_log_message = active_delver.to_string() + " clears room at " + &self.game.delver_position.to_string(); // Move this to an event.
-                    } else {
-                        self.eventqueue.events.push(Event::Damage {delver_index:self.game.delver_index, amount: 1});
-                        self.game.last_log_message = active_delver.to_string() + " fails to clear room."
-                    }
+                    current_room.room_type.attempt_clear(self.game.delver_position, self.game.delver_index, &mut self.eventqueue);
+                    // if roll(rng, active_delver.get_stat(DelverStats::Fightiness)) > roll(rng, self.game.dungeon.deadliness*10.0) {
+                    //     current_room.complete = true;
+                    //     self.game.last_log_message = active_delver.to_string() + " clears room at " + &self.game.delver_position.to_string(); // Move this to an event.
+                    // } else {
+                    //     self.eventqueue.events.push(Event::Damage {delver_index:self.game.delver_index, amount: 1});
+                    //     self.game.last_log_message = active_delver.to_string() + " fails to clear room."
+                    // }
             }
             }
             GamePhase::Forge => {
@@ -139,7 +146,7 @@ impl Sim {
             GamePhase::Travel => {
                 self.game.phase = GamePhase::TurnStart;
                 // Do Travel stuff
-                if roll(rng, active_delver.base.speediness) > roll(rng, self.game.dungeon.lengthiness) {
+                if roll(rng, active_delver.get_stat(DelverStats::Speediness)) > roll(rng, self.game.dungeon.lengthiness) {
                     let position = self.game.delver_position + Coordinate(1,0);
                     self.eventqueue.events.push(Event::Move {delver_index:self.game.delver_index, position});
                     self.game.last_log_message = active_delver.to_string() + " guides the delvers to " + &position.to_string();
@@ -236,14 +243,20 @@ impl Sim {
                     self.eventqueue.events.push(Event::EndGame)
                 }
             }
+            // Complex events: Cannot have post_events
+            Event::Roll { difficulty, stat, outcomes} => {
+                let mut pushes = outcomes.get(roll(rng,self.game.delvers[self.game.delver_index as usize].get_stat(stat)) > difficulty);
+                self.eventqueue.events.append(&mut pushes); //RENAME VARIABLES
+                return
+            }
             Event::EndGame => {self.game.phase = GamePhase::Finished; println!("Game Ended")}
             Event::Log { message } => {
                 // if game.last_log_message != "" {panic!("Log message dropped!")};
                 self.game.last_log_message = message;
                 return
             }
-            Event::ClearRoom { room } => {let mut room = room;room.complete = true; return}
-            Event::Cancelled => ()
+            Event::ClearRoom { room_position } => {self.game.rooms.get_mut(&room_position).unwrap().complete = true; return}
+            Event::Cancelled => (return)
         }
         {
             let modifiers = {
