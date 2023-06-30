@@ -36,6 +36,7 @@ version = "0.1.0"
 dependencies = [
  "colored",
  "rand",
+ "rand_chacha",
  "serde",
  "serde_json",
 ]

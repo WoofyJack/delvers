@@ -21,11 +21,12 @@ use crate::locations::{Coordinate, Room};
 use crate::sim::{Game, Sim};
 use crate::modifiers::{Pheonix};
 
-
+use rand::prelude::*;
+use rand_chacha::ChaCha8Rng;
 
 fn main() {
     colored::control::set_virtual_terminal(true).unwrap();
-
+    // let mut rng = ChaCha8Rng::seed_from_u64(100);
     let mut rng = rand::thread_rng();
     let team = Team::load_from_file("Teams.json", 0);
 

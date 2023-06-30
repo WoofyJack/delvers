@@ -1,6 +1,6 @@
 use rand::Rng;
 use crate::locations::{Coordinate, Room};
-use crate::modifiers::Outcomes;
+use crate::modifiers::{Outcomes, ReplaceOutcomes};
 use crate::teams::{Dungeon, Delver};
 use std::collections::HashMap;
 
@@ -21,9 +21,9 @@ pub enum Event {
     Death {delver_index:u8},
     EndGame,
     Log {message:String},
-    Chance {chance:f32, outcomes:Outcomes},
     // Roll {difficulty:f32, stat:} //Figure this out later.
-    ClearRoom {room:Room}
+    ClearRoom {room:Room},
+    Cancelled
 }
 pub struct EventQueue {
     pub events:Vec<Event> //Probably doesnt need to be a struct. Fix later.
@@ -123,7 +123,7 @@ impl Sim {
                 else {
                     self.game.phase = GamePhase::TurnStart;
                     // Do encounter rolls
-                    if roll(rng, active_delver.base.fightiness) > roll(rng, self.game.dungeon.deadliness) {
+                    if roll(rng, active_delver.base.fightiness) > roll(rng, self.game.dungeon.deadliness*10.0) {
                         current_room.complete = true;
                         self.game.last_log_message = active_delver.to_string() + " clears room at " + &self.game.delver_position.to_string(); // Move this to an event.
                     } else {
@@ -152,7 +152,7 @@ impl Sim {
         }
     }
     pub fn render(&self) {
-        let waittime = time::Duration::from_secs(1);
+        let waittime = time::Duration::from_secs(0);
         for p in &self.game.delvers {
             let delvername = if p.active {p.base.name.normal()} else {p.base.name.truecolor(100,100,100)};
             print!("{}: ",delvername);
@@ -190,7 +190,16 @@ impl Sim {
             };
     
             for m in modifiers {
-                event = m.replace_event(event, &self.game, &mut self.eventqueue);
+                event = 
+                match m.replace_event(event, &self.game, &mut self.eventqueue) {
+                    ReplaceOutcomes::Stop => Event::Cancelled,
+                    ReplaceOutcomes::Event { event } => event,
+                    ReplaceOutcomes::Chance { chance, outcomes } => {
+                        let (immediate, mut pushed) = outcomes.get(roll(rng, 1.0) < chance);
+                        self.eventqueue.events.append(&mut pushed);
+                        immediate
+                    }
+                };
             }
             for m in modifiers {
                 m.pre_event(&event, &self.game, &mut self.eventqueue);
@@ -233,12 +242,8 @@ impl Sim {
                 self.game.last_log_message = message;
                 return
             }
-            Event::Chance { chance, outcomes } => {
-                let mut events = if roll(rng,1.0) > chance {outcomes.success} else {outcomes.fail};
-                self.eventqueue.events.append(&mut events);
-                return
-            }
             Event::ClearRoom { room } => {let mut room = room;room.complete = true; return}
+            Event::Cancelled => ()
         }
         {
             let modifiers = {
