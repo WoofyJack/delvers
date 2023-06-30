@@ -16,7 +16,7 @@ use std::collections::HashMap;
 
 use sim::EventQueue;
 
-use crate::teams::{Delver, Dungeon, Team};
+use crate::teams::{Delver, Dungeon, BaseTeam, GameTeam};
 use crate::locations::{Coordinate, Room};
 use crate::sim::{Game, Sim};
 use crate::modifiers::{Pheonix};
@@ -28,23 +28,24 @@ fn main() {
     colored::control::set_virtual_terminal(true).unwrap();
     // let mut rng = ChaCha8Rng::seed_from_u64(100);
     let mut rng = rand::thread_rng();
-    let team = Team::load_from_file("Teams.json", 0);
+    let team = BaseTeam::load_from_file("Teams.json", 0);
+    // let mut fighter = team.delvers.get(0).unwrap().to_game_delver();
+    // fighter.modifiers.push(Box::new(Pheonix));
+    
+    // let mut rogue = team.delvers.get(1).unwrap().to_game_delver();
+    // rogue.modifiers.push(Box::new(Pheonix));
+    let mut game_team = GameTeam::load_team(&team);
+    game_team.delvers[0].modifiers.push(Box::new(Pheonix));
+    game_team.delvers[1].modifiers.push(Box::new(Pheonix));
 
-    let mut delvers = Vec::new();
-    for c in team.delvers {
-        let mut c:Delver = Delver::load_delver(c);
-        let pheonix = Pheonix;
-        c.modifiers.push(Box::new(pheonix));
-        delvers.push(c);
-    }
     let mut rooms: HashMap<Coordinate, Room> = HashMap::new();
     for i in 0..5 {
         rooms.insert(Coordinate(i,0), Room::new_room());
     }
-    let dungeon = Dungeon::new_dungeon(String::from("The Dungeon"));
-    let game = Game::new_game(delvers, dungeon, rooms);
+    let dungeon = team.dungeon.clone();
+    let game = Game::new_game(game_team, dungeon, rooms);
     let mut sim = Sim {game, finished:false, eventqueue:EventQueue::new_queue()};
-
+    println!("Play dlungeon!");
     loop {
         if !sim.next_frame(&mut rng) {
             break

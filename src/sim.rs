@@ -1,7 +1,7 @@
 use rand::Rng;
 use crate::locations::{Coordinate, Room};
 use crate::modifiers::{OutcomesWithImmediate, Outcomes, ReplaceOutcomes};
-use crate::teams::{Dungeon, Delver, DelverStats};
+use crate::teams::{Dungeon, Delver, DelverStats, GameTeam};
 use std::collections::HashMap;
 
 use std::{thread, time};
@@ -14,11 +14,27 @@ pub struct  Sim {
     pub finished:bool
 }
 
-pub enum Event {
-    Damage {delver_index:u8, amount:i8},
-    Heal {delver_index:u8, amount:i8},
-    Move {delver_index:u8, position:Coordinate},
-    Death {delver_index:u8},
+pub struct Event {
+    pub target_index:Option<usize>,
+    pub event_type:EventType
+}
+impl Event {
+    // pub fn no_target(event_type:EventType) -> Event {
+    //     Event {target_index:Option::None, event_type}
+    // }
+    // pub fn has_target (target:usize, event_type:EventType) -> Event {
+    //     Event {target_index:Option::Some(target), event_type}
+    // }
+    pub fn comment_event(event:Event, message:String) -> Vec<Event> {
+        vec![event, (EventType::Log{message}).no_target()]
+    }
+}
+
+pub enum EventType {
+    Damage {amount:i8},
+    Heal {amount:i8},
+    Move {position:Coordinate},
+    Death,
     EndGame,
     Log {message:String},
     // Roll {difficulty:f32, stat:} //Figure this out later.
@@ -26,9 +42,12 @@ pub enum Event {
     ClearRoom {room_position:Coordinate},
     Cancelled
 }
-impl Event {
-    pub fn comment_event(event:Event, message:String) -> Vec<Event> {
-        vec![event, Event::Log { message }]
+impl EventType {
+    pub fn no_target(self) -> Event {
+        Event {event_type:self, target_index:Option::None}
+    }
+    pub fn target(self, index:usize) -> Event {
+        Event {event_type:self, target_index:Option::Some(index)}
     }
 }
 pub struct EventQueue {
@@ -53,8 +72,7 @@ enum GamePhase {
 pub struct Game {
     phase:GamePhase,
 
-    pub delvers:Vec<Delver>,
-    delver_index:u8,
+    pub delverteam:GameTeam,
     
     rooms: HashMap<Coordinate, Room>,
     delver_position:Coordinate,
@@ -66,19 +84,18 @@ pub struct Game {
 
 
 impl Game {
-    pub fn new_game(delvers: Vec<Delver>, dungeon:Dungeon, rooms: HashMap<Coordinate,Room>) -> Game {
+    pub fn new_game(delverteam:GameTeam, dungeon:Dungeon, rooms: HashMap<Coordinate,Room>) -> Game {
         Game {phase:GamePhase::NotStarted,
-            delver_index:0u8,
-            delvers, rooms, dungeon,
+            delverteam, rooms, dungeon,
             delver_position: Coordinate(0,0),
             last_log_message:String::from("")
         }
     }
-    fn increment_delver(&mut self) {
-        self.delver_index += 1;
-        if self.delver_index >= self.delvers.len().try_into().unwrap()// Converts len() into a u8. Shouldn't be possible to get 256 delvers, but should add in error handling.
-            {self.delver_index = 0;}
-    }
+    // fn increment_delver(&mut self) {
+    //     self.delver_index += 1;
+    //     if self.delver_index >= self.delvers.len().try_into().unwrap()// Converts len() into a u8. Shouldn't be possible to get 256 delvers, but should add in error handling.
+    //         {self.delver_index = 0;}
+    // }
 }
 
 
@@ -104,12 +121,8 @@ impl Sim {
     }
 
     pub fn tick(&mut self, rng:&mut impl Rng) -> () {
-        let active_delver = &self.game.delvers[self.game.delver_index as usize];
-        if !active_delver.active {
-            self.game.increment_delver(); return self.tick(rng); // Could go infinite, should add some protections at the start.
-        }
-        let mut current_room: &mut Room = 
-        match self.game.rooms.get_mut(&self.game.delver_position) {
+        let current_room: &Room = 
+        match self.game.rooms.get(&self.game.delver_position) { //Checks for if off-map
             Some(n) => n,
             None => {self.game.delver_position = Coordinate(0,0); return Sim::tick(self, rng)} //TODO: Replace with some special case room, a la hall of flames.
         };
@@ -120,23 +133,19 @@ impl Sim {
             }
             GamePhase::TurnStart => {
                 self.game.phase = GamePhase::Encounter;
-                self.game.increment_delver()
-    
-                //active_delver and current_room not currently valid.
             }
             GamePhase::Encounter => {
                 if current_room.complete {self.game.phase = GamePhase::Forge;}
                 else {
                     self.game.phase = GamePhase::TurnStart;
                     // Do encounter rolls
-                    current_room.room_type.attempt_clear(self.game.delver_position, self.game.delver_index, &mut self.eventqueue);
-                    // if roll(rng, active_delver.get_stat(DelverStats::Fightiness)) > roll(rng, self.game.dungeon.deadliness*10.0) {
-                    //     current_room.complete = true;
-                    //     self.game.last_log_message = active_delver.to_string() + " clears room at " + &self.game.delver_position.to_string(); // Move this to an event.
-                    // } else {
-                    //     self.eventqueue.events.push(Event::Damage {delver_index:self.game.delver_index, amount: 1});
-                    //     self.game.last_log_message = active_delver.to_string() + " fails to clear room."
-                    // }
+                    // DO IMMEDIATE FIX
+                    let base_stat = current_room.room_type.base_stat();
+                    let active_delver = self.game.delverteam.choose_delver(base_stat);
+                    let delver_index = self.game.delverteam.get_index(active_delver).unwrap();
+                    let room_position = self.game.delver_position;
+                    current_room.room_type.attempt_clear(&self.game, room_position, delver_index, &mut self.eventqueue);
+
             }
             }
             GamePhase::Forge => {
@@ -146,13 +155,20 @@ impl Sim {
             GamePhase::Travel => {
                 self.game.phase = GamePhase::TurnStart;
                 // Do Travel stuff
+                let active_delver = self.game.delverteam.choose_delver(DelverStats::Speediness);
+                let delver_index = self.game.delverteam.get_index(active_delver).unwrap();
                 if roll(rng, active_delver.get_stat(DelverStats::Speediness)) > roll(rng, self.game.dungeon.lengthiness) {
                     let position = self.game.delver_position + Coordinate(1,0);
-                    self.eventqueue.events.push(Event::Move {delver_index:self.game.delver_index, position});
+                    let event_type = EventType::Move {position};
+                    let event= event_type.target(delver_index);
+                    self.eventqueue.events.push(event);
                     self.game.last_log_message = active_delver.to_string() + " guides the delvers to " + &position.to_string();
                 } else {
-                    self.eventqueue.events.push(Event::Damage {delver_index:self.game.delver_index, amount: 1});
-                    self.game.last_log_message = active_delver.to_string() + " fails to navigate."
+                    let event_type = EventType::Damage {amount: 1};
+                    let event= event_type.target(delver_index);
+                    self.eventqueue.events.push(event);
+
+                    self.game.last_log_message = active_delver.to_string() + " hurts themselves while navigating."
                 }
             }
             GamePhase::Finished => {}
@@ -160,7 +176,7 @@ impl Sim {
     }
     pub fn render(&self) {
         let waittime = time::Duration::from_secs(0);
-        for p in &self.game.delvers {
+        for p in &self.game.delverteam.delvers {
             let delvername = if p.active {p.base.name.normal()} else {p.base.name.truecolor(100,100,100)};
             print!("{}: ",delvername);
 
@@ -191,81 +207,97 @@ impl Sim {
     pub fn resolve_event(&mut self, rng: &mut impl Rng, event:Event) {    
         let event: Event = {
             let mut event = event;
-            let modifiers = {
-                let d = &self.game.delvers[self.game.delver_index as usize];
-                &d.modifiers
+            let mut modifiers = Vec::new();
+            match event.target_index {
+                Some(delver_index) => {
+                    let d = &self.game.delverteam.delvers[delver_index];
+                    for m in &d.modifiers {
+                        modifiers.push(m);
+                    }
+                }
+                _ => ()
             };
     
-            for m in modifiers {
+            for m in &modifiers {
                 event = 
                 match m.replace_event(event, &self.game, &mut self.eventqueue) {
-                    ReplaceOutcomes::Stop => Event::Cancelled,
+                    ReplaceOutcomes::Stop => EventType::Cancelled.no_target(),
                     ReplaceOutcomes::Event { event } => event,
                     ReplaceOutcomes::Chance { chance, outcomes } => {
-                        let (immediate, mut pushed) = outcomes.get(roll(rng, 1.0) < chance);
+                        let (immediate, mut pushed) = outcomes.get(rng.gen::<f32>() < chance);
                         self.eventqueue.events.append(&mut pushed);
                         immediate
                     }
                 };
             }
-            for m in modifiers {
+            for m in &modifiers {
                 m.pre_event(&event, &self.game, &mut self.eventqueue);
     
             }
             event
         };
-        match event {
-            Event::Damage {delver_index, amount } => {
-                self.game.delvers[delver_index as usize].hp -= amount;
-                if self.game.delvers[delver_index as usize].hp <= 0 {
-                    self.eventqueue.events.push(Event::Death {delver_index});
+        let target_index = event.target_index;
+        match event.event_type {
+            EventType::Damage {amount} => {
+                let delver_index = target_index.unwrap();
+                self.game.delverteam.delvers[delver_index].hp -= amount;
+                if self.game.delverteam.delvers[delver_index].hp <= 0 {
+                    self.eventqueue.events.push(EventType::Death.target(delver_index));
                 }
-                self.game.last_log_message = self.game.delvers[delver_index as usize].to_string() + " takes damage, bringing them down to " + &self.game.delvers[delver_index as usize].hp.to_string() + " hp";
+                // self.game.last_log_message = self.game.delverteam.delvers[delver_index].to_string() + " takes damage, bringing them down to " + &self.game.delverteam.delvers[delver_index as usize].hp.to_string() + " hp";
             }
-            Event::Heal {delver_index, amount } => {
-                self.game.delvers[delver_index as usize].hp += amount;
-                if self.game.delvers[delver_index as usize].hp > 5 {
-                    self.game.delvers[delver_index as usize].hp = 5;
+            EventType::Heal {amount } => {
+                let delver_index = target_index.unwrap();
+                self.game.delverteam.delvers[delver_index as usize].hp += amount;
+                if self.game.delverteam.delvers[delver_index as usize].hp > 5 {
+                    self.game.delverteam.delvers[delver_index as usize].hp = 5;
                 }
-                self.game.last_log_message = self.game.delvers[delver_index as usize].to_string() + " heals, bringing them up to " + &self.game.delvers[delver_index as usize].hp.to_string() + " hp";
+                // self.game.last_log_message = self.game.delverteam.delvers[delver_index as usize].to_string() + " heals, bringing them up to " + &self.game.delverteam.delvers[delver_index as usize].hp.to_string() + " hp";
             }
-            Event::Death { delver_index} => {
-                self.game.delvers[delver_index as usize].active = false;
-                let alive_delvers = self.game.delvers.iter().any(|r| r.active);
+            EventType::Death => {
+                let delver_index = target_index.unwrap();
+
+                self.game.delverteam.delvers[delver_index as usize].active = false;
+                let alive_delvers = self.game.delverteam.delvers.iter().any(|r| r.active);
                 if !alive_delvers {
-                    self.eventqueue.events.push(Event::EndGame);
+                    self.eventqueue.events.push(EventType::EndGame.no_target());
                 }
-                self.game.last_log_message = self.game.delvers[delver_index as usize].to_string() + " dies.";
+                // self.game.last_log_message = self.game.delverteam.delvers[delver_index as usize].to_string() + " dies.";
             }
-            Event::Move {delver_index, position } => {
+            EventType::Move {position } => {
+                let delver_index = target_index.unwrap();
                 self.game.delver_position = position;
                 if self.game.delver_position.0 == 4 { // temporary, need to implement new conditions. 
-                    self.eventqueue.events.push(Event::EndGame)
+                    self.eventqueue.events.push(EventType::EndGame.no_target())
                 }
             }
-            // Complex events: Cannot have post_events
-            Event::Roll { difficulty, stat, outcomes} => {
-                let mut pushes = outcomes.get(roll(rng,self.game.delvers[self.game.delver_index as usize].get_stat(stat)) > difficulty);
+            // Complex events: Cannot have post_events, because their insides are often consumed.
+            EventType::Roll { difficulty, stat, outcomes} => {
+                let delver = self.game.delverteam.choose_delver(stat);
+                let mut pushes = outcomes.get(roll(rng,delver.get_stat(stat)) > difficulty);
                 self.eventqueue.events.append(&mut pushes); //RENAME VARIABLES
                 return
             }
-            Event::EndGame => {self.game.phase = GamePhase::Finished; println!("Game Ended")}
-            Event::Log { message } => {
+            EventType::EndGame => {self.game.phase = GamePhase::Finished; println!("Game Ended")}
+            EventType::Log { message } => {
                 // if game.last_log_message != "" {panic!("Log message dropped!")};
                 self.game.last_log_message = message;
                 return
             }
-            Event::ClearRoom { room_position } => {self.game.rooms.get_mut(&room_position).unwrap().complete = true; return}
-            Event::Cancelled => (return)
+            EventType::ClearRoom { room_position } => {self.game.rooms.get_mut(&room_position).unwrap().complete = true; return}
+            EventType::Cancelled => (return)
         }
         {
-            let modifiers = {
-                let d = &self.game.delvers[self.game.delver_index as usize];
-                &d.modifiers
+            match event.target_index {
+                Some(delver_index) => {
+                    let d = &self.game.delverteam.delvers[delver_index];
+                    for m in &d.modifiers {
+                        m.post_event(&event, &self.game, &mut self.eventqueue);
+                    }
+                }
+                _ => ()
             };
-            for m in modifiers {
-                m.post_event(&event, &self.game, &mut self.eventqueue);
-            }
+
         }
         }
 }

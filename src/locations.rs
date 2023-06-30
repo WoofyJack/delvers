@@ -1,7 +1,7 @@
 use std::ops::Add;
 use std::fmt;
 
-use crate::{sim::{Event,Game,EventQueue}, teams::{DelverStats, Delver}, modifiers::Outcomes};
+use crate::{sim::{Event,EventType,Game,EventQueue}, teams::{DelverStats, Delver}, modifiers::Outcomes};
 
 pub struct Room {
     pub complete:bool,
@@ -13,19 +13,20 @@ impl Room {
     }
 }
 pub trait RoomType {
-    fn on_enter(&self,  _room_position:Coordinate, _queue:&mut EventQueue) {}
-    fn attempt_clear(&self,  room_position:Coordinate, _delver_index:u8, queue:&mut EventQueue) {queue.events.push(Event::ClearRoom {room_position});}
-    fn on_exit(&self,  _room_position:Coordinate, _queue:&mut EventQueue) {}
+    fn on_enter(&self, game:&Game,  _room_position:Coordinate, _queue:&mut EventQueue) {}
+    fn attempt_clear(&self, game:&Game,  room_position:Coordinate, _delver_index:usize, queue:&mut EventQueue) {queue.events.push((EventType::ClearRoom {room_position}).no_target());}
+    fn on_exit(&self, game:&Game,  _room_position:Coordinate, _queue:&mut EventQueue) {}
     fn base_stat(&self) -> DelverStats;
 }
 
 pub struct Trapped;
 impl RoomType for Trapped {
-    fn attempt_clear(&self,  room_position:Coordinate, delver_index:u8, _queue:&mut EventQueue) {
+    fn attempt_clear(&self, game:&Game,  room_position:Coordinate, delver_index:usize, _queue:&mut EventQueue) {
+        let delvername = &game.delverteam.delvers[delver_index].base.name;
         let outcomes = Outcomes {
-            success: Event::comment_event(Event::ClearRoom {room_position}, "Trapped room cleared".to_string()),
-            fail: Event::comment_event(Event::Damage { delver_index, amount: 1 }, "Trapped room triggered".to_string())};
-        _queue.events.push(Event::Roll {difficulty: 0.25, stat: self.base_stat(), outcomes })
+            success: Event::comment_event((EventType::ClearRoom {room_position}).no_target(),delvername.clone() + " clears a trapped room"),
+            fail: Event::comment_event((EventType::Damage {amount: 1 }).target(delver_index), delvername.clone() + " triggers a trapped room, hurting themselves")};
+        _queue.events.push((EventType::Roll {difficulty: 0.25, stat: self.base_stat(), outcomes}).no_target())
     }
     fn base_stat(&self) -> DelverStats {
         DelverStats::Fightiness

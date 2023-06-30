@@ -1,5 +1,5 @@
 
-use crate::{sim::{Event, Game, EventQueue}, teams::DelverStats};
+use crate::{sim::{Event, EventType, Game, EventQueue}, teams::DelverStats};
 
 
 // Jumping through hoops cus we aren't allowed to modify game while we're iterating through modifiers stored in game.
@@ -52,13 +52,16 @@ impl Outcomes {
 pub struct Pheonix;
 impl Modifier for Pheonix { // I guess just allow modifiers to do their own rolls. No, trait objects don't like being passed rng.
     fn replace_event(&self, event:Event, game:&Game, queue:&mut EventQueue) -> ReplaceOutcomes {
-        match event {
-            Event::Death { delver_index } => {
+        let delver_index = event.target_index.unwrap();
+        let failmessage = String::from(game.delverteam.delvers[delver_index].to_string()) + " fails to defy death!";
+        let successmessage= String::from(game.delverteam.delvers[delver_index].to_string()) + " defies death!";
+        match event.event_type {
+            EventType::Death => {
                 let outcomes = OutcomesWithImmediate{
                 immediate_fail: event,
-                fail:vec![Event::Log { message: String::from(game.delvers[delver_index as usize].to_string()) + " fails to defy death!" }],
-                immediate_success:Event::Heal { delver_index: delver_index, amount: 5 },
-                success:vec![Event::Log { message: String::from(game.delvers[delver_index as usize].to_string()) + " defies death!" }, ]
+                fail:vec![EventType::Log {message:failmessage}.no_target()],
+                immediate_success:EventType::Heal {amount: 5 }.target(delver_index),
+                success:vec![EventType::Log { message: successmessage}.no_target(), ]
                 };
                 ReplaceOutcomes::Chance { chance: 0.25, outcomes: outcomes }
             },

@@ -2,8 +2,8 @@
     {
         "team_name":"The Baltimore Crabs",
         "delvers": [
-            {"name":"Rogue","exploriness":0.5,"fightiness":0.5,"speediness":0.5},
-            {"name":"Fighter","exploriness":0.5,"fightiness":0.5,"speediness":0.5}
+            {"name":"Fighter","exploriness":0.3,"fightiness":0.8,"speediness":0.3},
+            {"name":"Rogue","exploriness":0.7,"fightiness":0.3,"speediness":0.7}
         ],
         "dungeon" : {
             "name":"The Crabitat",
