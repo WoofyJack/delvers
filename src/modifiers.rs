@@ -1,9 +1,22 @@
 
+use serde::{Serialize, Deserialize};
+
 use crate::{sim::{Event, EventType, Game, EventQueue}, teams::DelverStats};
 
 
+#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
+pub enum PermanentModifiers {
+    Pheonix,
+}
+impl PermanentModifiers {
+    pub fn to_game_mod(&self) -> Box<dyn Modifier> {
+        match self {
+            PermanentModifiers::Pheonix => Box::new(Pheonix)
+        }
+    }
+}
+
 // Jumping through hoops cus we aren't allowed to modify game while we're iterating through modifiers stored in game.
-// Should probably store delvers seperately, game stores refs to it?
 pub trait Modifier {
     // on_phase
     fn replace_event(&self, event:Event, _game:&Game, _queue:&mut EventQueue) -> ReplaceOutcomes {ReplaceOutcomes::Event {event}}
@@ -51,7 +64,7 @@ impl Outcomes {
 
 pub struct Pheonix;
 impl Modifier for Pheonix { // I guess just allow modifiers to do their own rolls. No, trait objects don't like being passed rng.
-    fn replace_event(&self, event:Event, game:&Game, queue:&mut EventQueue) -> ReplaceOutcomes {
+    fn replace_event(&self, event:Event, game:&Game, _queue:&mut EventQueue) -> ReplaceOutcomes {
         let delver_index = event.target_index.unwrap();
         let failmessage = String::from(game.delverteam.delvers[delver_index].to_string()) + " fails to defy death!";
         let successmessage= String::from(game.delverteam.delvers[delver_index].to_string()) + " defies death!";

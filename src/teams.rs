@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
-use std::{fmt, path::StripPrefixError};
+use std::{fmt};
 use serde_json::{Value};
 use std::fs;
 
-use crate::{modifiers::Modifier, sim::Game};
+use crate::{modifiers::{Modifier, PermanentModifiers}};
 
 #[derive(Deserialize, Serialize)]
 pub struct BaseTeam {
@@ -41,11 +41,19 @@ impl GameTeam {
         result
     }
     pub fn choose_delver(&self, stat:DelverStats) -> &Delver {
-        match stat {
+        let delver = match stat {
             DelverStats::Exploriness => &self.delvers[self.rogue],
             DelverStats::Fightiness => &self.delvers[self.fighter],
             DelverStats::Speediness => &self.delvers[self.rogue]
+        };
+        if delver.active {return delver}
+        
+        for d in &self.delvers {
+            if d.active {
+                return d
+            }
         }
+        panic!("All delvers dead.")
     }
 }
 pub struct Delver {
@@ -59,9 +67,13 @@ impl Delver {
     //     Delver{ base: &BaseDelver::new_delver(name), hp: 5, active:true, modifiers: Vec::new()}
     // }
     pub fn load_delver (base: BaseDelver) -> Delver {
-        Delver {base, hp: 5, active: true, modifiers:Vec::new()}
+        let mut modifiers = Vec::new();
+        for i in &base.perm_mods {
+            modifiers.push(PermanentModifiers::to_game_mod(i));
+        }
+        Delver {base, hp: 5, active: true, modifiers}
     }
-    fn to_json(self) -> String {
+    pub fn to_json(&self) -> String {
         serde_json::to_string(&self.base).unwrap()
     }
     pub fn get_stat(&self, stat:DelverStats) -> f32 {
@@ -84,17 +96,18 @@ pub enum DelverStats {
     Speediness
 }
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct BaseDelver {
     pub name: String,
     pub exploriness: f32,
     pub fightiness: f32,
-    pub speediness: f32
+    pub speediness: f32,
+    pub perm_mods: Vec<PermanentModifiers>
 }
 
 impl BaseDelver {
     pub fn new_delver(name: String) -> BaseDelver{
-        BaseDelver {name, exploriness:0.5, fightiness:0.5, speediness:0.5}
+        BaseDelver {name, exploriness:0.5, fightiness:0.5, speediness:0.5, perm_mods:Vec::new()}
     }
     pub fn to_game_delver(self) -> Delver {
         Delver::load_delver(self)

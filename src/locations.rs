@@ -1,7 +1,7 @@
 use std::ops::Add;
 use std::fmt;
 
-use crate::{sim::{Event,EventType,Game,EventQueue}, teams::{DelverStats, Delver}, modifiers::Outcomes};
+use crate::{sim::{Event,EventType,Game,EventQueue}, teams::{DelverStats}, modifiers::Outcomes};
 
 pub struct Room {
     pub complete:bool,
@@ -13,9 +13,9 @@ impl Room {
     }
 }
 pub trait RoomType {
-    fn on_enter(&self, game:&Game,  _room_position:Coordinate, _queue:&mut EventQueue) {}
-    fn attempt_clear(&self, game:&Game,  room_position:Coordinate, _delver_index:usize, queue:&mut EventQueue) {queue.events.push((EventType::ClearRoom {room_position}).no_target());}
-    fn on_exit(&self, game:&Game,  _room_position:Coordinate, _queue:&mut EventQueue) {}
+    fn on_enter(&self, _game:&Game,  _room_position:Coordinate, _queue:&mut EventQueue) {}
+    fn attempt_clear(&self, _game:&Game,  room_position:Coordinate, _delver_index:usize, queue:&mut EventQueue) {queue.events.push((EventType::ClearRoom {room_position}).no_target());}
+    fn on_exit(&self, _game:&Game,  _room_position:Coordinate, _queue:&mut EventQueue) {}
     fn base_stat(&self) -> DelverStats;
 }
 

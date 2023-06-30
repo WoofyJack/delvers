@@ -1,7 +1,7 @@
 use rand::Rng;
 use crate::locations::{Coordinate, Room};
-use crate::modifiers::{OutcomesWithImmediate, Outcomes, ReplaceOutcomes};
-use crate::teams::{Dungeon, Delver, DelverStats, GameTeam};
+use crate::modifiers::{Outcomes, ReplaceOutcomes};
+use crate::teams::{Dungeon, DelverStats, GameTeam};
 use std::collections::HashMap;
 
 use std::{thread, time};
@@ -157,19 +157,18 @@ impl Sim {
                 // Do Travel stuff
                 let active_delver = self.game.delverteam.choose_delver(DelverStats::Speediness);
                 let delver_index = self.game.delverteam.get_index(active_delver).unwrap();
-                if roll(rng, active_delver.get_stat(DelverStats::Speediness)) > roll(rng, self.game.dungeon.lengthiness) {
-                    let position = self.game.delver_position + Coordinate(1,0);
-                    let event_type = EventType::Move {position};
-                    let event= event_type.target(delver_index);
-                    self.eventqueue.events.push(event);
-                    self.game.last_log_message = active_delver.to_string() + " guides the delvers to " + &position.to_string();
-                } else {
-                    let event_type = EventType::Damage {amount: 1};
-                    let event= event_type.target(delver_index);
-                    self.eventqueue.events.push(event);
 
-                    self.game.last_log_message = active_delver.to_string() + " hurts themselves while navigating."
-                }
+                let position = self.game.delver_position + Coordinate(1,0);
+
+                let message = active_delver.to_string() + " guides the delvers to " + &position.to_string();
+                let success = Event::comment_event(EventType::Move {position}.target(delver_index), message);
+                
+                let message = active_delver.to_string() + " hurts themselves while navigating.";
+                let fail = Event::comment_event(EventType::Damage {amount: 1}.target(delver_index), message);
+                
+                let outcomes = Outcomes{success, fail};
+                let event = EventType::Roll { difficulty: roll(rng, self.game.dungeon.lengthiness*100.0), stat: DelverStats::Speediness, outcomes}.no_target();
+                self.eventqueue.events.push(event);
             }
             GamePhase::Finished => {}
         }
@@ -265,7 +264,6 @@ impl Sim {
                 // self.game.last_log_message = self.game.delverteam.delvers[delver_index as usize].to_string() + " dies.";
             }
             EventType::Move {position } => {
-                let delver_index = target_index.unwrap();
                 self.game.delver_position = position;
                 if self.game.delver_position.0 == 4 { // temporary, need to implement new conditions. 
                     self.eventqueue.events.push(EventType::EndGame.no_target())
@@ -285,7 +283,7 @@ impl Sim {
                 return
             }
             EventType::ClearRoom { room_position } => {self.game.rooms.get_mut(&room_position).unwrap().complete = true; return}
-            EventType::Cancelled => (return)
+            EventType::Cancelled => return
         }
         {
             match event.target_index {
