@@ -3,7 +3,9 @@
         "team_name":"The Baltimore Crabs",
         "delvers": [
             {"name":"Fighter","exploriness":0.3,"fightiness":0.8,"speediness":0.3,"perm_mods":["Pheonix"]},
-            {"name":"Rogue","exploriness":0.7,"fightiness":0.3,"speediness":0.7,"perm_mods":["Pheonix"]}
+            {"name":"Nimble","exploriness":0.7,"fightiness":0.3,"speediness":0.7,"perm_mods":["Pheonix"]},
+            {"name":"Magic","exploriness":0.7,"fightiness":0.3,"speediness":0.3,"perm_mods":["Pheonix"]},
+            {"name":"Suppot","exploriness":0.3,"fightiness":0.3,"speediness":0.3,"perm_mods":["Pheonix"]}
         ],
         "dungeon" : {
             "name":"The Crabitat",

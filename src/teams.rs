@@ -23,7 +23,9 @@ impl BaseTeam {
 pub struct GameTeam {
     pub delvers:Vec<Delver>,
     pub fighter:usize,
-    pub rogue:usize
+    pub nimble:usize,
+    pub magic:usize,
+    pub support:usize
     // Healer, etc.
 }
 impl GameTeam {
@@ -31,7 +33,9 @@ impl GameTeam {
         let mut delvers = Vec::new();
         delvers.push(Delver::load_delver(base.delvers[0].clone()));
         delvers.push(Delver::load_delver(base.delvers[1].clone()));
-        GameTeam {delvers, fighter:0, rogue:1}
+        delvers.push(Delver::load_delver(base.delvers[2].clone()));
+        delvers.push(Delver::load_delver(base.delvers[3].clone()));
+        GameTeam {delvers, fighter:0, nimble:1, magic:2, support:3}
     }
     pub fn get_index(&self, delver:&Delver) -> Option<usize> {
         let mut result = Option::None;
@@ -40,11 +44,19 @@ impl GameTeam {
         }
         result
     }
+    pub fn active_delvers(&self) -> Vec<usize> {
+        let mut results = Vec::new();
+        if self.delvers[self.fighter].active {results.push(self.fighter)}
+        if self.delvers[self.magic].active {results.push(self.magic)}
+        if self.delvers[self.nimble].active {results.push(self.nimble)}
+        if self.delvers[self.support].active {results.push(self.support)}
+        results
+    }
     pub fn choose_delver(&self, stat:DelverStats) -> &Delver {
         let delver = match stat {
-            DelverStats::Exploriness => &self.delvers[self.rogue],
+            DelverStats::Exploriness => &self.delvers[self.nimble],
             DelverStats::Fightiness => &self.delvers[self.fighter],
-            DelverStats::Speediness => &self.delvers[self.rogue]
+            DelverStats::Speediness => &self.delvers[self.nimble]
         };
         if delver.active {return delver}
         
@@ -78,18 +90,22 @@ impl Delver {
     }
     pub fn collect_stats(active_delver:&Delver, all_delvers:&Vec<Delver>, stat:DelverStats) -> f32 {
         let mut total = 0.0;
-        total += active_delver.get_stat(stat) * 0.5; // Active_delver should be in party, so 0.25 will also get added.
+        total += active_delver.get_stat(stat) * 0.6; // Active_delver should be in party, so 0.1 will also get added.
         for d in all_delvers {
-            total += d.get_stat(stat) * 0.25;
+            total += d.get_stat(stat) * 0.15;
         }
         total
     }
     pub fn get_stat(&self, stat:DelverStats) -> f32 {
-        match stat {
+        let mut statvalue =  match stat {
             DelverStats::Exploriness => self.base.exploriness,
             DelverStats::Fightiness => self.base.fightiness,
             DelverStats::Speediness => self.base.speediness
-        }
+        };
+        for m in &self.modifiers {
+            statvalue = m.get_stat(stat, statvalue)
+        };
+        statvalue
     }
 }
 impl fmt::Display for Delver {

@@ -22,10 +22,12 @@ pub trait RoomType {
 pub struct Trapped;
 impl RoomType for Trapped {
     fn attempt_clear(&self, game:&Game,  room_position:Coordinate, delver_index:usize, _queue:&mut EventQueue) {
-        let delvername = &game.delverteam.delvers[delver_index].base.name;
+        let active_delver = &game.delverteam.delvers[delver_index];
+        let trigger_index = game.rand_target;
+        let trigger_delver = &game.delverteam.delvers[trigger_index];
         let outcomes = Outcomes {
-            success: Event::comment_event((EventType::ClearRoom {room_position}).no_target(),delvername.clone() + " clears a trapped room"),
-            fail: Event::comment_event((EventType::Damage {amount: 1 }).target(delver_index), delvername.clone() + " triggers a trapped room, hurting themselves")};
+            success: Event::comment_event((EventType::ClearRoom {room_position}).no_target(),active_delver.to_string() + " clears a trapped room"),
+            fail: Event::comment_event((EventType::Damage {amount: 1 }).target(trigger_index), trigger_delver.to_string() + " triggers a trapped room, hurting themselves")};
         _queue.events.push((EventType::Roll {difficulty: 0.25, stat: self.base_stat(), outcomes}).no_target())
     }
     fn base_stat(&self) -> DelverStats {

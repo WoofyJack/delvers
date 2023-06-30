@@ -1,4 +1,6 @@
 use rand::Rng;
+use rand::seq::SliceRandom;
+
 use crate::locations::{Coordinate, Room};
 use crate::modifiers::{Outcomes, ReplaceOutcomes};
 use crate::teams::{Dungeon, DelverStats, GameTeam, Delver};
@@ -26,7 +28,7 @@ impl Event {
     //     Event {target_index:Option::Some(target), event_type}
     // }
     pub fn comment_event(event:Event, message:String) -> Vec<Event> {
-        vec![event, (EventType::Log{message}).no_target()]
+        vec![(EventType::Log{message}).no_target(),event]
     }
 }
 
@@ -39,6 +41,7 @@ pub enum EventType {
     Log {message:String},
     // Roll {difficulty:f32, stat:} //Figure this out later.
     Roll {difficulty:f32, stat:DelverStats, outcomes:Outcomes},
+    // RandomTarget {event:Box<EventType>},
     ClearRoom {room_position:Coordinate},
     Cancelled
 }
@@ -80,6 +83,7 @@ pub struct Game {
     dungeon: Dungeon,
 
     last_log_message:String,
+    pub rand_target:usize,
 }
 
 
@@ -88,7 +92,8 @@ impl Game {
         Game {phase:GamePhase::NotStarted,
             delverteam, rooms, dungeon,
             delver_position: Coordinate(0,0),
-            last_log_message:String::from("")
+            last_log_message:String::from(""),
+            rand_target:0
         }
     }
     // fn increment_delver(&mut self) {
@@ -203,7 +208,8 @@ impl Sim {
         };
         self.resolve_event(rng,event);
     }
-    pub fn resolve_event(&mut self, rng: &mut impl Rng, event:Event) {    
+    pub fn resolve_event(&mut self, rng: &mut impl Rng, event:Event) {   
+        self.game.rand_target = *self.game.delverteam.active_delvers().choose(rng).unwrap();
         let event: Event = {
             let mut event = event;
             let mut modifiers = Vec::new();
@@ -243,7 +249,6 @@ impl Sim {
                 if self.game.delverteam.delvers[delver_index].hp <= 0 {
                     self.eventqueue.events.push(EventType::Death.target(delver_index));
                 }
-                // self.game.last_log_message = self.game.delverteam.delvers[delver_index].to_string() + " takes damage, bringing them down to " + &self.game.delverteam.delvers[delver_index as usize].hp.to_string() + " hp";
             }
             EventType::Heal {amount } => {
                 let delver_index = target_index.unwrap();
@@ -251,7 +256,6 @@ impl Sim {
                 if self.game.delverteam.delvers[delver_index as usize].hp > 5 {
                     self.game.delverteam.delvers[delver_index as usize].hp = 5;
                 }
-                // self.game.last_log_message = self.game.delverteam.delvers[delver_index as usize].to_string() + " heals, bringing them up to " + &self.game.delverteam.delvers[delver_index as usize].hp.to_string() + " hp";
             }
             EventType::Death => {
                 let delver_index = target_index.unwrap();
@@ -261,7 +265,6 @@ impl Sim {
                 if !alive_delvers {
                     self.eventqueue.events.push(EventType::EndGame.no_target());
                 }
-                // self.game.last_log_message = self.game.delverteam.delvers[delver_index as usize].to_string() + " dies.";
             }
             EventType::Move {position } => {
                 self.game.delver_position = position;
@@ -285,6 +288,11 @@ impl Sim {
                 self.game.last_log_message = message;
                 return
             }
+            // EventType::RandomTarget { event } => {
+            //     let target = rng.gen_range(0..self.game.delverteam.active_delvers().len());
+            //     self.eventqueue.events.push(event.target(target));
+            //     return
+            // }
             EventType::ClearRoom { room_position } => {self.game.rooms.get_mut(&room_position).unwrap().complete = true; return}
             EventType::Cancelled => return
         }
