@@ -90,9 +90,9 @@ impl Delver {
     }
     pub fn collect_stats(active_delver:&Delver, all_delvers:&Vec<Delver>, stat:DelverStats) -> f32 {
         let mut total = 0.0;
-        total += active_delver.get_stat(stat) * 0.6; // Active_delver should be in party, so 0.1 will also get added.
+        total += active_delver.get_stat(stat) * 0.8; // Active_delver should be in party, so 0.1 will also get added.
         for d in all_delvers {
-            total += d.get_stat(stat) * 0.15;
+            total += d.get_stat(stat) * 0.1;
         }
         total
     }

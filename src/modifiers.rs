@@ -83,7 +83,7 @@ impl Modifier for Pheonix { // I guess just allow modifiers to do their own roll
     }
     fn get_stat(&self, stat:DelverStats, statvalue:f32) -> f32 {
         match stat {
-            DelverStats::Fightiness => statvalue * 2.0,
+            DelverStats::Fightiness => statvalue * 1.1,
             _ => statvalue
         }
     }

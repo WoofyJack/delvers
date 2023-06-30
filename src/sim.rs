@@ -179,7 +179,7 @@ impl Sim {
         }
     }
     pub fn render(&self) {
-        let waittime = time::Duration::from_secs(0);
+        let waittime = time::Duration::from_secs(1);
         for p in &self.game.delverteam.delvers {
             let delvername = if p.active {p.base.name.normal()} else {p.base.name.truecolor(100,100,100)};
             print!("{}: ",delvername);
@@ -261,15 +261,15 @@ impl Sim {
                 let delver_index = target_index.unwrap();
 
                 self.game.delverteam.delvers[delver_index as usize].active = false;
-                let alive_delvers = self.game.delverteam.delvers.iter().any(|r| r.active);
-                if !alive_delvers {
-                    self.eventqueue.events.push(EventType::EndGame.no_target());
+                let alive_delvers = self.game.delverteam.active_delvers();
+                if alive_delvers.len() == 0 {
+                    self.eventqueue.events.insert(0,EventType::EndGame.no_target());
                 }
             }
             EventType::Move {position } => {
                 self.game.delver_position = position;
                 if self.game.delver_position.0 == 4 { // temporary, need to implement new conditions. 
-                    self.eventqueue.events.push(EventType::EndGame.no_target())
+                    self.eventqueue.events.insert(0,EventType::EndGame.no_target())
                 }
             }
             // Complex events: Cannot have post_events, because their insides are often consumed.
