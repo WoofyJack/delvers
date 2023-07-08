@@ -3,7 +3,7 @@ use crate::locations::Coordinate;
 use crate::sim::Game;
 use serde::{Serialize, Deserialize};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Event {
     pub target:Entity,
     pub source:Entity,
@@ -52,7 +52,7 @@ impl Entity {
     
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Scene { //TODO: Implement
     pub begin:String,
     pub difficulty:f32,
@@ -71,7 +71,7 @@ impl Scene {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum EventType {
     Damage {amount:i8},
     Heal {amount:i8},
@@ -98,6 +98,7 @@ impl EventType {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct OutcomesWithImmediate {
     pub immediate_success:Event,
     pub success:Vec<Event>,
@@ -114,7 +115,7 @@ impl OutcomesWithImmediate {
         }
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Outcomes {
     pub success:Vec<Event>,
     pub fail:Vec<Event>
@@ -129,6 +130,7 @@ impl Outcomes {
         }
     }
 }
+#[derive(Serialize, Deserialize)]
 pub struct EventQueue
 {
     pub events:Vec<Event> //Probably doesnt need to be a struct. Fix later.

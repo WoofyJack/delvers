@@ -1,6 +1,10 @@
 use rand::Rng;
+use rand::rngs::ThreadRng;
 use rand::seq::SliceRandom;
+use rand_chacha::ChaCha8Rng;
+use rand_pcg::Pcg32;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
 use crate::locations::{Coordinate, Room};
 use crate::modifiers::{ReplaceOutcomes, ModToApply, ModRelation};
@@ -14,12 +18,15 @@ use std::{thread, time};
 
 use colored::{Colorize, ColoredString};
 
+#[derive(Serialize, Deserialize)]
 pub struct  Sim {
     pub game: Game,
     pub eventqueue:EventQueue,
     pub finished:bool
 }
 
+
+#[serde_as]
 #[derive(Serialize, Deserialize)]
 pub struct Game {
     pub phase:GamePhase,
@@ -27,6 +34,7 @@ pub struct Game {
     pub delverteam:DelverTeam,
     pub defenderteam:DefenderTeam,
     
+    #[serde_as(as = "Vec<(_, _)>")]
     pub rooms: HashMap<Coordinate, Room>,
     pub delver_position:Coordinate,
 

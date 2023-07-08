@@ -145,7 +145,7 @@ impl fmt::Display for Delver {
         write!(f, "{}", name)
     }
 }
-#[derive(Clone, Copy,Debug)]
+#[derive(Clone, Copy,Debug, Deserialize, Serialize)]
 pub enum Stats {
     Exploriness,
     Fightiness,
