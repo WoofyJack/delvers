@@ -26,7 +26,7 @@
             "lengthiness":0.5
         },
         "defenders": [
-            {"name":"Tia Brie","fightiness":0.8,"perm_mods":["Pheonix"]}
+            {"name":"Tia Brie","exploriness":0.3,"fightiness":0.8,"magiciness":0.3,"supportiveness":0.3,"perm_mods":["DoubleOrNothing"]}
         ],
         "color":[38,6,215]
     }

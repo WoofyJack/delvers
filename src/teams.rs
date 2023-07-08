@@ -4,7 +4,7 @@ use serde_json::{Value};
 use std::fs;
 use colored::Colorize;
 
-use crate::{modifiers::{Modifier, PermanentModifiers}, events::Entity};
+use crate::{modifiers::{Modifier, BaseModifier}, events::Entity};
 
 #[derive(Deserialize, Serialize)]
 pub struct BaseTeam {
@@ -28,22 +28,6 @@ impl fmt::Display for BaseTeam {
     }
 }
 
-pub struct DefenderTeam {
-    name:String,
-    pub defender:Defender,
-    pub dungeon:Dungeon
-}
-impl DefenderTeam {
-    pub fn load_team(base: &BaseTeam) -> DefenderTeam {
-        let defender = Defender::load_defender(base.defenders[0].clone());
-        DefenderTeam {name:base.team_name.clone(), defender, dungeon:base.dungeon.clone() }
-    }
-}
-impl fmt::Display for DefenderTeam {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name.truecolor(38,6,215))
-    }
-}
 pub struct DelverTeam {
     name:String,
     pub delvers:Vec<Delver>,
@@ -77,12 +61,12 @@ impl DelverTeam {
         if self.delvers[self.support].active {results.push(self.support)}
         results
     }
-    pub fn choose_delver(&self, stat:DelverStats) -> Entity {
+    pub fn choose_delver(&self, stat:Stats) -> Entity {
         let delver = match stat {
-            DelverStats::Exploriness => self.nimble,
-            DelverStats::Fightiness => self.fighter,
-            DelverStats::Magiciness => self.magic,
-            DelverStats::Supportiveness => self.support
+            Stats::Exploriness => self.nimble,
+            Stats::Fightiness => self.fighter,
+            Stats::Magiciness => self.magic,
+            Stats::Supportiveness => self.support
         };
         if self.delvers[delver].active {return Entity::Delver { index: delver}}
         
@@ -101,11 +85,12 @@ impl fmt::Display for DelverTeam {
     }
 }
 pub struct Delver {
-    pub base: BaseDelver,
+    base: BaseDelver,
     pub hp:i8,
     pub active:bool,
     pub modifiers:Vec<Box<dyn Modifier>>
 }
+
 impl Delver {
     // fn new_delver(name: String) -> Delver{
     //     Delver{ base: &BaseDelver::new_delver(name), hp: 5, active:true, modifiers: Vec::new()}
@@ -113,14 +98,14 @@ impl Delver {
     pub fn load_delver (base: BaseDelver) -> Delver {
         let mut modifiers = Vec::new();
         for i in &base.perm_mods {
-            modifiers.push(PermanentModifiers::to_game_mod(i));
+            modifiers.push(BaseModifier::to_game_mod(i));
         }
         Delver {base, hp: 5, active: true, modifiers}
     }
     pub fn to_json(&self) -> String {
         serde_json::to_string(&self.base).unwrap()
     }
-    pub fn collect_stats(active_delver:Entity, all_delvers:&Vec<Delver>, stat:DelverStats) -> f32 {
+    pub fn collect_stats(active_delver:Entity, all_delvers:&Vec<Delver>, stat:Stats) -> f32 {
         let active_delver = match active_delver {
             Entity::Delver { index } => index,
             _ => panic!("Invalid stats collected")
@@ -133,12 +118,12 @@ impl Delver {
         }
         total
     }
-    pub fn get_stat(&self, stat:DelverStats) -> f32 {
+    pub fn get_stat(&self, stat:Stats) -> f32 {
         let mut statvalue =  match stat {
-            DelverStats::Exploriness => self.base.exploriness,
-            DelverStats::Fightiness => self.base.fightiness,
-            DelverStats::Magiciness => self.base.magiciness,
-            DelverStats::Supportiveness => self.base.supportiveness
+            Stats::Exploriness => self.base.exploriness,
+            Stats::Fightiness => self.base.fightiness,
+            Stats::Magiciness => self.base.magiciness,
+            Stats::Supportiveness => self.base.supportiveness
         };
         for m in &self.modifiers {
             statvalue = m.get_delver_stat(stat, statvalue)
@@ -153,7 +138,7 @@ impl fmt::Display for Delver {
     }
 }
 #[derive(Clone, Copy,Debug)]
-pub enum DelverStats {
+pub enum Stats {
     Exploriness,
     Fightiness,
     Magiciness,
@@ -167,7 +152,7 @@ pub struct BaseDelver {
     pub fightiness: f32,
     pub magiciness: f32,
     pub supportiveness: f32,
-    pub perm_mods: Vec<PermanentModifiers>
+    pub perm_mods: Vec<BaseModifier>
 }
 
 impl BaseDelver {
@@ -185,13 +170,27 @@ impl fmt::Display for BaseDelver {
     }
 }
 
-#[derive(Clone, Copy)]
-pub enum DefenderStats {
-    Fightiness
+pub struct DefenderTeam {
+    name:String,
+    pub defender:BaseDefender,
+    pub active_defenders:Vec<Defender>,
+    pub dungeon:Dungeon
+}
+impl DefenderTeam {
+    pub fn load_team(base: &BaseTeam) -> DefenderTeam {
+        // let defender = Defender::load_defender(base.defenders[0].clone());
+        
+        DefenderTeam {name:base.team_name.clone(), defender:base.defenders[0].clone(), dungeon:base.dungeon.clone(), active_defenders:Vec::new()}
+    }
+}
+impl fmt::Display for DefenderTeam {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name.truecolor(38,6,215))
+    }
 }
 
 pub struct Defender {
-    pub base: BaseDefender,
+    base: BaseDefender,
     pub hp:i8,
     pub active:bool,
     pub modifiers:Vec<Box<dyn Modifier>>
@@ -200,16 +199,19 @@ impl Defender {
     pub fn load_defender (base: BaseDefender) -> Defender {
         let mut modifiers = Vec::new();
         for i in &base.perm_mods {
-            modifiers.push(PermanentModifiers::to_game_mod(i));
+            modifiers.push(BaseModifier::to_game_mod(i));
         }
         Defender {base, hp: 5, active: true, modifiers}
     }
     pub fn to_json(&self) -> String {
         serde_json::to_string(&self.base).unwrap()
     }
-    pub fn get_stat(&self, stat:DefenderStats) -> f32 {
+    pub fn get_stat(&self, stat:Stats) -> f32 {
         let mut statvalue =  match stat {
-            DefenderStats::Fightiness => self.base.fightiness
+            Stats::Exploriness => self.base.exploriness,
+            Stats::Fightiness => self.base.fightiness,
+            Stats::Magiciness => self.base.magiciness,
+            Stats::Supportiveness => self.base.supportiveness
         };
         for m in &self.modifiers {
             statvalue = m.get_defender_stat(stat, statvalue)
@@ -225,12 +227,15 @@ impl fmt::Display for Defender {
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct BaseDefender {
     pub name: String,
+    pub exploriness: f32,
     pub fightiness: f32,
-    pub perm_mods: Vec<PermanentModifiers>
+    pub magiciness: f32,
+    pub supportiveness: f32,
+    pub perm_mods: Vec<BaseModifier>
 }
 impl BaseDefender {
     pub fn new_delver(name: String) -> BaseDefender{
-        BaseDefender {name, fightiness:0.5, perm_mods:Vec::new()}
+        BaseDefender {name, fightiness:0.5, magiciness:0.5, exploriness:0.5, supportiveness:0.5, perm_mods:Vec::new()}
     }
     pub fn to_game_defender(self) -> Defender {
         Defender::load_defender(self)

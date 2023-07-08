@@ -10,8 +10,10 @@ mod teams;
 mod sim;
 mod locations;
 mod modifiers;
-mod events;
 mod core_loop;
+mod events;
+
+mod combat;
 
 use std::time;
 use std::thread;
@@ -46,7 +48,7 @@ fn main() {
 
     let game = Game::new_game(delver_team, defender_team, rooms);
     let mut sim = Sim {game, finished:false, eventqueue:EventQueue::new_queue()};
-    println!("{} are delving into the {}'s dungeon, {}", team1.to_string(), team2.to_string(), team2.dungeon.to_string());
+    // println!("{} are delving into the {}'s dungeon, {}", team1.to_string(), team2.to_string(), team2.dungeon.to_string());
 
     let waittime = time::Duration::from_secs(2);
     thread::sleep(waittime);

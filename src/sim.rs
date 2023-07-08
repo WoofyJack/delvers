@@ -1,9 +1,10 @@
 use rand::Rng;
 use rand::seq::SliceRandom;
+use serde::{Deserialize, Serialize};
 
 use crate::locations::{Coordinate, Room};
 use crate::modifiers::{ReplaceOutcomes, ModToApply, ModRelation};
-use crate::teams::{Dungeon, DelverStats, DelverTeam, Delver, Defender, DefenderStats, DefenderTeam};
+use crate::teams::{Dungeon, Stats, DelverTeam, Delver, Defender, DefenderTeam};
 use crate::events::{EventQueue, Entity, Event, EventType, Scene, Outcomes};
 use crate::core_loop::{GamePhase};
 
@@ -19,7 +20,6 @@ pub struct  Sim {
     pub finished:bool
 }
 
-
 pub struct Game {
     pub phase:GamePhase,
 
@@ -31,8 +31,6 @@ pub struct Game {
 
     pub last_log_message:String,
     pub rand_target:usize,
-
-    pub boss_fight_started:bool
 }
 
 
@@ -43,15 +41,9 @@ impl Game {
             rooms,
             delver_position: Coordinate(0,0),
             last_log_message:String::from(""),
-            rand_target:0,
-            boss_fight_started:false
+            rand_target:0
         }
     }
-    // fn increment_delver(&mut self) {
-    //     self.delver_index += 1;
-    //     if self.delver_index >= self.delvers.len().try_into().unwrap()// Converts len() into a u8. Shouldn't be possible to get 256 delvers, but should add in error handling.
-    //         {self.delver_index = 0;}
-    // }
 }
 
 
@@ -72,9 +64,9 @@ impl Sim {
 
     
     pub fn render(&self) {
-        let waittime = time::Duration::from_secs(1);
+        let waittime = time::Duration::from_secs(0);
         for p in &self.game.delverteam.delvers {
-            let delvername = if p.active {p.to_string().normal()} else {p.base.name.truecolor(100,100,100)};
+            let delvername = if p.active {p.to_string().normal()} else {p.to_string().truecolor(100,100,100)};
             print!("{}: ",delvername);
 
             let active = "O".red();
@@ -89,9 +81,9 @@ impl Sim {
             }
             println!();
         }
-        {
-            let p = &self.game.defenderteam.defender;
-            let delvername = if p.active {p.to_string().normal()} else {p.base.name.truecolor(100,100,100)};
+        for p in &self.game.defenderteam.active_defenders{
+            // let p = &self.game.defenderteam.defender;
+            let delvername = if p.active {p.to_string().normal()} else {p.to_string().truecolor(100,100,100)};
             print!("{}: ",delvername);
 
             let active = "O".red();
@@ -108,10 +100,10 @@ impl Sim {
         }
         println!("{}", self.game.last_log_message);
         
-        // for e in &self.eventqueue.events {
-        //     print!("{:?}", e.event_type);
-        // }
-        // println!();
+        for e in &self.eventqueue.events {
+            print!("{:?}", e.event_type);
+        }
+        println!();
         
         thread::sleep(waittime);
         println!()
@@ -128,7 +120,7 @@ impl Sim {
         // Janky solution for traps to randomly target.
         self.game.rand_target = match self.game.delverteam.active_delvers().choose(rng) {
             Some(i) => *i,
-            None => panic!("No valid random target")
+            None => 100 // Events that can occur with 0 alive delvers should not target a random alive delver until the jank is fixed.
         };
         // ------------------------- Gather and apply modifiers to event: --------------------------
         let event: Event = {
@@ -141,8 +133,8 @@ impl Sim {
                         modifiers.push(ModToApply {modifier, relation:ModRelation::Target} );
                     }
                 },
-                Entity::Defender => {
-                    let d = &self.game.defenderteam.defender;
+                Entity::Defender { index } => {
+                    let d = &self.game.defenderteam.active_defenders[index];
                     for modifier in &d.modifiers {
                         modifiers.push(ModToApply {modifier, relation:ModRelation::Target});
                     }
@@ -156,8 +148,8 @@ impl Sim {
                         modifiers.push(ModToApply {modifier, relation:ModRelation::Source} );
                     }
                 },
-                Entity::Defender => {
-                    let d = &self.game.defenderteam.defender;
+                Entity::Defender {index} => {
+                    let d = &self.game.defenderteam.active_defenders[index];
                     for modifier in &d.modifiers {
                         modifiers.push(ModToApply {modifier, relation:ModRelation::Source});
                     }
@@ -197,9 +189,10 @@ impl Sim {
                             self.eventqueue.events.insert(0,EventType::Death.target(event.source,event.target));
                         }
                     }
-                    Entity::Defender => {
-                        self.game.defenderteam.defender.hp -= amount;
-                        if self.game.defenderteam.defender.hp <= 0 {
+                    Entity::Defender {index} => {
+                        let mut defender:&mut Defender = self.game.defenderteam.active_defenders.get_mut(index).unwrap();
+                        defender.hp -= amount;
+                        if defender.hp <= 0 {
                             self.eventqueue.events.insert(0,EventType::Death.target(event.source,event.target));
                         }
                     }
@@ -214,10 +207,11 @@ impl Sim {
                             self.game.delverteam.delvers[index].hp = 5;
                         }
                     }
-                    Entity::Defender => {
-                        self.game.defenderteam.defender.hp += amount;
-                        if self.game.defenderteam.defender.hp > 5 {
-                            self.game.defenderteam.defender.hp = 5;
+                    Entity::Defender {index}=> {
+                        let mut defender = self.game.defenderteam.active_defenders.get_mut(index).unwrap();
+                        defender.hp += amount;
+                        if defender.hp > 5 {
+                            defender.hp = 5;
                         }
                     }
                     _ => ()
@@ -233,7 +227,13 @@ impl Sim {
                             self.eventqueue.events.insert(0,EventType::EndGame.no_target_no_source());
                         }
                     }
-                    Entity::Defender => {self.game.defenderteam.defender.active = false;}
+                    Entity::Defender {index} => {
+                        // self.game.defenderteam.active_defenders[index].active = false;
+                        self.game.defenderteam.active_defenders.remove(index);
+                        if self.game.defenderteam.active_defenders.len() == 0 {
+                            self.game.phase = GamePhase::TurnStart;
+                        }
+                    }
                     _ => ()
             }
             }
@@ -248,7 +248,8 @@ impl Sim {
                 }
             }
             EventType::StartBossFight => {
-                self.game.boss_fight_started = true;
+                let defender = self.game.defenderteam.defender.clone().to_game_defender();
+                self.game.defenderteam.active_defenders.push(defender);
 
             }
             EventType::Tick => {
@@ -263,7 +264,7 @@ impl Sim {
                 let mut pushes = outcomes.get(roll(rng, total_stat) > difficulty * rng.gen::<f32>());
                 self.eventqueue.events.append(&mut pushes);
             }
-            EventType::EndGame => {self.game.phase = GamePhase::Finished; println!("Game Ended")}
+            EventType::EndGame => {self.game.phase = GamePhase::Finished; self.eventqueue.log(String::from("Game Ended"));}
             EventType::Log { message } => {
                 self.game.last_log_message = message;
             }

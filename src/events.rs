@@ -1,6 +1,7 @@
-use crate::teams::{DelverStats, DefenderStats};
+use crate::teams::{Stats};
 use crate::locations::Coordinate;
 use crate::sim::Game;
+use serde::Serialize;
 
 #[derive(Debug)]
 pub struct Event {
@@ -14,18 +15,18 @@ impl Event {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum Entity {
     Delver {index:usize},
     Room {index:Coordinate},
-    Defender,
+    Defender {index:usize},
     None
 }
 impl Entity {
     pub fn to_string(&self, game:&Game) -> String{
         match self {
             Entity::Delver{index} => {game.delverteam.delvers[*index].to_string()},
-            Entity::Defender => {game.defenderteam.defender.to_string()},
+            Entity::Defender {index} => {game.defenderteam.active_defenders[*index].to_string()},
             _ => panic!("Invalid to_string")
         }
     }
@@ -35,18 +36,19 @@ impl Entity {
             _ => panic!("Expected delver")
         }
     }
-    pub fn get_delver_stat(self,game:&Game, stat:DelverStats) -> f32 {
+    pub fn get_stat(self,game:&Game, stat:Stats) -> f32 {
         match self {
             Entity::Delver {index} => game.delverteam.delvers[index].get_stat(stat),
-            _ => panic!("Expected delver")
+            Entity::Defender{index} => game.defenderteam.active_defenders[index].get_stat(stat),
+            _ => panic!("Expected delver or defender")
         }
     }
-    pub fn get_defender_stat(self,game:&Game, stat:DefenderStats) -> f32 {
-        match self {
-            Entity::Defender => game.defenderteam.defender.get_stat(stat),
-            _ => panic!("Expected defender")
-        }
-    }
+    // pub fn get_defender_stat(self,game:&Game, stat:Stats) -> f32 {
+    //     match self {
+    //         Entity::Defender{index} => game.defenderteam.active_defenders[index].get_stat(stat),
+    //         _ => panic!("Expected defender")
+    //     }
+    // }
     
 }
 
@@ -54,17 +56,17 @@ impl Entity {
 pub struct Scene { //TODO: Implement
     pub begin:String,
     pub difficulty:f32,
-    pub stat:DelverStats,
+    pub stat:Stats,
     pub success:(Event, String),
     pub fail: (Event, String)
 }
 impl Scene {
-    pub fn unpack (self) -> (String,f32, DelverStats,Outcomes) {
+    pub fn unpack (self) -> (String,f32, Stats,Outcomes) {
         let success = vec![EventType::Log { message:self.success.1}.no_target_no_source(), self.success.0];
         let fail = vec![EventType::Log { message:self.fail.1}.no_target_no_source(), self.fail.0];
         (self.begin,self.difficulty, self.stat, Outcomes {success, fail})
     }
-    fn create(begin: String, difficulty: f32, stat: DelverStats, success: (Event, String), fail: (Event, String)) -> Box<Scene> {
+    fn create(begin: String, difficulty: f32, stat: Stats, success: (Event, String), fail: (Event, String)) -> Box<Scene> {
         Box::new(Scene {begin, difficulty, stat, success, fail})
     }
 }
@@ -77,7 +79,7 @@ pub enum EventType {
     Death,
     EndGame,
     Log {message:String},
-    Roll {difficulty:f32, stat:DelverStats, outcomes:Outcomes},
+    Roll {difficulty:f32, stat:Stats, outcomes:Outcomes},
     Scene {scene:Box<Scene>},
     ClearRoom,
     StartBossFight,

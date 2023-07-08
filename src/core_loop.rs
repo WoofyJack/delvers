@@ -1,12 +1,13 @@
 use rand::Rng;
+use serde::Serialize;
 
 use crate::locations::{Coordinate, Room};
-use crate::teams::{DelverStats, DefenderStats};
+use crate::teams::{Stats};
 use crate::events::{Entity, Event, EventType, Outcomes};
 use crate::sim::{Sim, roll};
 
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Serialize)]
 pub enum GamePhase {
     NotStarted,
     TurnStart,
@@ -14,7 +15,7 @@ pub enum GamePhase {
     Forge,
     Travel,
     Finished,
-    Combat {target:Entity}
+    Combat {source:Entity, target:Entity}
 }
 
 pub fn tick(sim: &mut Sim, rng:&mut impl Rng) -> () {
@@ -27,10 +28,13 @@ pub fn tick(sim: &mut Sim, rng:&mut impl Rng) -> () {
     match sim.game.phase {
         GamePhase::NotStarted => {
             sim.game.phase = GamePhase::Encounter;
+
+            let message = sim.game.delverteam.to_string() + " are delving into " + &sim.game.defenderteam.to_string() +"'s dungeon " + &sim.game.defenderteam.dungeon.to_string();
+            sim.eventqueue.log(message);
         }
         GamePhase::TurnStart => {
-            if sim.game.boss_fight_started {
-                sim.game.phase = GamePhase::Combat { target: Entity::Defender}
+            if sim.game.defenderteam.active_defenders.len() > 0 {
+                sim.game.phase = GamePhase::Combat {source:sim.game.delverteam.choose_delver(Stats::Fightiness), target: Entity::Defender {index:0}}
             } else {
                 sim.game.phase = GamePhase::Encounter;
             }
@@ -43,9 +47,8 @@ pub fn tick(sim: &mut Sim, rng:&mut impl Rng) -> () {
                 // DO IMMEDIATE FIX
                 let base_stat = current_room.room_type.base_stat();
                 let active_delver = sim.game.delverteam.choose_delver(base_stat);
-                let room_position = sim.game.delver_position;
-                current_room.room_type.attempt_clear(&sim.game, room_position, active_delver, &mut sim.eventqueue);
-
+                let room = Entity::Room { index: sim.game.delver_position};
+                current_room.room_type.attempt_clear(&sim.game, room, active_delver, &mut sim.eventqueue);
         }
         }
         GamePhase::Forge => {
@@ -55,7 +58,7 @@ pub fn tick(sim: &mut Sim, rng:&mut impl Rng) -> () {
         GamePhase::Travel => {
             sim.game.phase = GamePhase::TurnStart;
             // Do Travel stuff
-            let active_delver = sim.game.delverteam.choose_delver(DelverStats::Exploriness);
+            let active_delver = sim.game.delverteam.choose_delver(Stats::Exploriness);
 
             let position = sim.game.delver_position + Coordinate(1,0);
 
@@ -66,52 +69,33 @@ pub fn tick(sim: &mut Sim, rng:&mut impl Rng) -> () {
             let fail = Event::comment_event(EventType::Damage {amount: 1}.target(Entity::None, active_delver), message);
             
             let outcomes = Outcomes{success, fail};
-            let event = EventType::Roll { difficulty: sim.game.defenderteam.dungeon.lengthiness, stat: DelverStats::Exploriness, outcomes}.no_target_no_source();
+            let event = EventType::Roll { difficulty: sim.game.defenderteam.dungeon.lengthiness, stat: Stats::Exploriness, outcomes}.no_target_no_source();
             sim.eventqueue.events.push(event);
 
             let message = active_delver.to_string(&sim.game) + " begins searching for a way forward.";
             sim.eventqueue.events.push(EventType::Log { message }.no_target_no_source());
         }
         GamePhase::Finished => {}
-        GamePhase::Combat {target} => {
-            let defender = &sim.game.defenderteam.defender;
-            if !defender.active {
-                sim.game.rooms.get_mut(&sim.game.delver_position).unwrap().complete = true;
-                sim.game.boss_fight_started = false;
-                sim.game.phase = GamePhase::TurnStart;
-            }
-            else {
-            let (active_delver, message) = match target {
-                Entity::Defender => {
-                    let active_delvers = sim.game.delverteam.active_delvers();
-                    let index =  active_delvers[rng.gen_range(0..active_delvers.len())];
-                    let target = Entity::Delver { index };
+        GamePhase::Combat {source, target} => {
+            let source_stat = source.get_stat(&sim.game, Stats::Fightiness);
+            let target_stat = target.get_stat(&sim.game, Stats::Fightiness);
 
-                    sim.game.phase = GamePhase::Combat { target };
+            let source_name = source.to_string(&sim.game);
+            let target_name = target.to_string(&sim.game);
+            
+            let message = format!("{} attacks {}", source_name, target_name);
 
-                    let active_delver = sim.game.delverteam.choose_delver(DelverStats::Fightiness);
-                    (active_delver, active_delver.to_string(&sim.game) + " challenges the dungeon's defender, " + &defender.to_string())
-                }
-                Entity::Delver { index } => {
-                    sim.game.phase = GamePhase::TurnStart;
-                    let active_delver = Entity::Delver { index };
-                    (active_delver, defender.to_string() + " attacks " + &active_delver.to_string(&sim.game))
-                }
-                _ => panic!("Invalid combat")
-            };
-            if roll(rng, active_delver.get_delver_stat(&sim.game, DelverStats::Fightiness)) > roll(rng, defender.get_stat(DefenderStats::Fightiness)) {
-                let message = active_delver.to_string(&sim.game) + " injures " + &defender.to_string();// + " leaving them on " + &(defender.hp-1).to_string() + " hp";
+            if roll(rng, source_stat) > roll(rng, target_stat) { //  Attack succeeds
+                let message = format!("{} injures {}", source_name, target_name);
                 sim.eventqueue.events.push(EventType::Log { message }.no_target_no_source());
-                sim.eventqueue.events.push (EventType::Damage { amount: 1 }.target(active_delver, Entity::Defender))
-            } else {
-                if true {//active_delver.hp > 1 {
-                    let message = defender.to_string() + " injures " + &active_delver.to_string(&sim.game);
-                    sim.eventqueue.events.push(EventType::Log { message }.no_target_no_source());
-                }
-                sim.eventqueue.events.push (EventType::Damage { amount: 1 }.target(Entity::Defender, active_delver));
+                sim.eventqueue.events.push (EventType::Damage { amount: 1 }.target(source, target))
+            } else { // Attack fails
+                let message = format!("{} injures {}", target_name, source_name);
+                sim.eventqueue.events.push(EventType::Log { message }.no_target_no_source());
+                sim.eventqueue.events.push (EventType::Damage { amount: 1 }.target(target, source))
             }
             sim.eventqueue.events.push(EventType::Log { message }.no_target_no_source());
-        }
+            sim.game.phase = GamePhase::Combat { source: target, target: source };
         }
     }
 }
