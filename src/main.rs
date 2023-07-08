@@ -5,17 +5,19 @@
 // Modifiers
 // Could be fun to add some tests
 
-#![allow(dead_code)]
+#![allow(dead_code, unused_imports)]
 mod teams;
 mod sim;
 mod locations;
 mod modifiers;
+mod events;
+mod core_loop;
 
 use std::time;
 use std::thread;
 
 use std::collections::HashMap;
-use sim::EventQueue;
+use crate::events::EventQueue;
 
 use crate::teams::{BaseTeam, DelverTeam, DefenderTeam, Defender, BaseDefender};
 use crate::locations::{Coordinate, Room, BossFight};
@@ -37,14 +39,14 @@ fn main() {
     
     let mut rooms: HashMap<Coordinate, Room> = HashMap::new();
     for i in 0..5 {
-        rooms.insert(Coordinate(i,0), Room::new_room());
+        rooms.insert(Coordinate(i,0), Room::new_room(&mut rng));
     }
     let room = Room {complete:false, room_type:Box::new(BossFight)};
     rooms.insert(Coordinate(rooms.len() as i8, 0), room);
 
     let game = Game::new_game(delver_team, defender_team, rooms);
     let mut sim = Sim {game, finished:false, eventqueue:EventQueue::new_queue()};
-    println!("{} are delving into the {}'s dungeon, {}", team1.team_name, team2.team_name, team2.dungeon.name);
+    println!("{} are delving into the {}'s dungeon, {}", team1.to_string(), team2.to_string(), team2.dungeon.to_string());
 
     let waittime = time::Duration::from_secs(2);
     thread::sleep(waittime);

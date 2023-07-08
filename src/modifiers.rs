@@ -1,8 +1,19 @@
 
 use serde::{Serialize, Deserialize};
 
-use crate::{sim::{Event, EventType, Game, EventQueue, Target}, teams::{DelverStats, DefenderStats}};
+use crate::events::{Event, EventType, EventQueue, Entity, OutcomesWithImmediate};
+use crate::sim::Game;
+use crate::teams::{DelverStats, DefenderStats};
 
+
+pub struct ModToApply <'a> {
+    pub modifier: &'a Box<dyn Modifier>,
+    pub relation: ModRelation
+}
+#[derive(Clone, Copy)]
+pub enum ModRelation {
+    Target, Source
+}
 
 #[derive(Clone, Copy, Serialize, Deserialize, Debug)]
 pub enum PermanentModifiers {
@@ -19,9 +30,8 @@ impl PermanentModifiers {
 // Jumping through hoops cus we aren't allowed to modify game while we're iterating through modifiers stored in game.
 pub trait Modifier {
     // on_phase
-    fn replace_event(&self, event:Event, _game:&Game, _queue:&mut EventQueue) -> ReplaceOutcomes {ReplaceOutcomes::Event {event}}
-    fn pre_event(&self, _event:&Event, _game:&Game, _queue:&mut EventQueue) {}
-    fn post_event(&self, _event:&Event, _game:&Game, _queue:&mut EventQueue) {}
+    fn replace_event(&self, event:Event, relation:ModRelation, _game:&Game, _queue:&mut EventQueue) -> ReplaceOutcomes {ReplaceOutcomes::Event {event}}
+    fn pre_event(&self, _event:&Event, relation:ModRelation,  _game:&Game, _queue:&mut EventQueue) {}
     fn get_delver_stat(&self, _stat:DelverStats, statvalue:f32) -> f32 {statvalue}
     fn get_defender_stat(&self, _stat:DefenderStats, statvalue:f32) -> f32 {statvalue}
     }
@@ -32,44 +42,19 @@ pub enum ReplaceOutcomes{
     Chance {chance:f32, outcomes:OutcomesWithImmediate}
 }
 
-pub struct OutcomesWithImmediate {
-    pub immediate_success:Event,
-    pub success:Vec<Event>,
-    pub immediate_fail:Event,
-    pub fail:Vec<Event>
-}
-impl OutcomesWithImmediate {
-    pub fn get(self, bool:bool) -> (Event, Vec<Event>) {
-        if bool {
-            return (self.immediate_success, self.success)
-        }
-        else {
-            return (self.immediate_fail, self.fail)
-        }
-    }
-}
-#[derive(Debug)]
-pub struct Outcomes {
-    pub success:Vec<Event>,
-    pub fail:Vec<Event>
-}
-impl Outcomes {
-    pub fn get(self, bool:bool) -> Vec<Event> {
-        if bool {
-            return self.success
-        }
-        else {
-            return self.fail
-        }
-    }
-}
+
 
 pub struct Pheonix;
 impl Modifier for Pheonix { // I guess just allow modifiers to do their own rolls. No, trait objects don't like being passed rng.
-    fn replace_event(&self, event:Event, game:&Game, _queue:&mut EventQueue) -> ReplaceOutcomes {
+    fn replace_event(&self, event:Event, relation:ModRelation, game:&Game, _queue:&mut EventQueue) -> ReplaceOutcomes {
+        match relation { 
+            ModRelation::Target => (),
+            _ => return ReplaceOutcomes::Event {event}
+        };
+
         let target_name = match event.target {
-            Target::Delver { index } => game.delverteam.delvers[index].to_string(),
-            Target::Defender => game.defenderteam.defender.to_string(),
+            Entity::Delver { index } => game.delverteam.delvers[index].to_string(),
+            Entity::Defender => game.defenderteam.defender.to_string(),
             _ => "".to_string()
         };
         let failmessage = target_name.clone() + "'s Pheonix fails. Their ashes scatter to the wind.";
@@ -77,26 +62,33 @@ impl Modifier for Pheonix { // I guess just allow modifiers to do their own roll
         match event.event_type {
             EventType::Death => {
                 let outcomes = OutcomesWithImmediate{
-                immediate_success:EventType::Heal {amount: 5 }.target(event.target),
+                immediate_success:EventType::Heal {amount: 5 }.target(event.target,event.target),
                 immediate_fail: event,
-                fail:vec![EventType::Log {message:failmessage}.no_target()],
-                success:vec![EventType::Log { message: successmessage}.no_target(), ]
+                fail:vec![EventType::Log {message:failmessage}.no_target_no_source()],
+                success:vec![EventType::Log { message: successmessage}.no_target_no_source(), ]
                 };
                 ReplaceOutcomes::Chance { chance: 0.25, outcomes: outcomes }
             },
             _ => ReplaceOutcomes::Event {event}
         }
     }
-    fn get_delver_stat(&self, stat:DelverStats, statvalue:f32) -> f32 {
-        match stat {
-            DelverStats::Fightiness => statvalue * 1.1,
-            _ => statvalue
-        }
-    }
-    fn get_defender_stat(&self, stat:DefenderStats, statvalue:f32) -> f32 {
-        match stat {
-            DefenderStats::Fightiness => statvalue * 1.1,
-            _ => statvalue
+}
+pub struct DoubleOrNothing;
+impl Modifier for DoubleOrNothing {
+    fn replace_event(&self, event:Event,  relation:ModRelation, game:&Game, queue:&mut EventQueue) -> ReplaceOutcomes {
+        let self_name = match relation {
+            ModRelation::Source => event.source.to_string(game),
+            ModRelation::Target => event.target.to_string(game),
+            _ => return ReplaceOutcomes::Event {event}
+        };
+        match event.event_type {
+            EventType::Damage { amount } => {
+                let message = self_name + " doubles the risk";
+                queue.events.push(EventType::Log { message }.no_target_no_source());
+                let event = EventType::Damage { amount:amount+1 }.target(event.source, event.target);
+                ReplaceOutcomes::Event { event }
+            },
+            _ => ReplaceOutcomes::Event {event}
         }
     }
 }

@@ -2,15 +2,17 @@ use serde::{Deserialize, Serialize};
 use std::{fmt};
 use serde_json::{Value};
 use std::fs;
+use colored::Colorize;
 
-use crate::{modifiers::{Modifier, PermanentModifiers}};
+use crate::{modifiers::{Modifier, PermanentModifiers}, events::Entity};
 
 #[derive(Deserialize, Serialize)]
 pub struct BaseTeam {
     pub team_name:String,
     delvers:Vec<BaseDelver>, //This is emptied when put into GameTeam
     pub dungeon:Dungeon,
-    defenders:Vec<BaseDefender>
+    defenders:Vec<BaseDefender>,
+    color:[u8;3]
 }
 impl BaseTeam {
     pub fn load_from_file(file:&str,index:usize) -> BaseTeam {
@@ -20,18 +22,30 @@ impl BaseTeam {
         serde_json::from_value(teams[index].take()).unwrap()
     }
 }
+impl fmt::Display for BaseTeam {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.team_name.truecolor(self.color[0], self.color[1], self.color[2]))
+    }
+}
 
 pub struct DefenderTeam {
+    name:String,
     pub defender:Defender,
     pub dungeon:Dungeon
 }
 impl DefenderTeam {
     pub fn load_team(base: &BaseTeam) -> DefenderTeam {
         let defender = Defender::load_defender(base.defenders[0].clone());
-        DefenderTeam { defender, dungeon:base.dungeon.clone() }
+        DefenderTeam {name:base.team_name.clone(), defender, dungeon:base.dungeon.clone() }
+    }
+}
+impl fmt::Display for DefenderTeam {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name.truecolor(38,6,215))
     }
 }
 pub struct DelverTeam {
+    name:String,
     pub delvers:Vec<Delver>,
     pub fighter:usize,
     pub nimble:usize,
@@ -46,7 +60,7 @@ impl DelverTeam {
         delvers.push(Delver::load_delver(base.delvers[1].clone()));
         delvers.push(Delver::load_delver(base.delvers[2].clone()));
         delvers.push(Delver::load_delver(base.delvers[3].clone()));
-        DelverTeam {delvers, fighter:0, nimble:1, magic:2, support:3}
+        DelverTeam {name:base.team_name.clone(), delvers, fighter:0, nimble:1, magic:2, support:3}
     }
     pub fn get_index(&self, delver:&Delver) -> Option<usize> {
         let mut result = Option::None;
@@ -63,20 +77,27 @@ impl DelverTeam {
         if self.delvers[self.support].active {results.push(self.support)}
         results
     }
-    pub fn choose_delver(&self, stat:DelverStats) -> &Delver {
+    pub fn choose_delver(&self, stat:DelverStats) -> Entity {
         let delver = match stat {
-            DelverStats::Exploriness => &self.delvers[self.nimble],
-            DelverStats::Fightiness => &self.delvers[self.fighter],
-            DelverStats::Speediness => &self.delvers[self.nimble]
+            DelverStats::Exploriness => self.nimble,
+            DelverStats::Fightiness => self.fighter,
+            DelverStats::Magiciness => self.magic,
+            DelverStats::Supportiveness => self.support
         };
-        if delver.active {return delver}
+        if self.delvers[delver].active {return Entity::Delver { index: delver}}
         
         for d in &self.delvers {
             if d.active {
-                return d
+                let index = self.get_index(d).unwrap();
+                return Entity::Delver { index}
             }
         }
         panic!("All delvers dead.")
+    }
+}
+impl fmt::Display for DelverTeam {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name.truecolor(252, 36, 0))
     }
 }
 pub struct Delver {
@@ -99,11 +120,16 @@ impl Delver {
     pub fn to_json(&self) -> String {
         serde_json::to_string(&self.base).unwrap()
     }
-    pub fn collect_stats(active_delver:&Delver, all_delvers:&Vec<Delver>, stat:DelverStats) -> f32 {
+    pub fn collect_stats(active_delver:Entity, all_delvers:&Vec<Delver>, stat:DelverStats) -> f32 {
+        let active_delver = match active_delver {
+            Entity::Delver { index } => index,
+            _ => panic!("Invalid stats collected")
+        };
+        let active_delver = &all_delvers[active_delver];
         let mut total = 0.0;
-        total += active_delver.get_stat(stat) * 0.8; // Active_delver should be in party, so 0.1 will also get added.
+        total += active_delver.get_stat(stat) * 0.75; // Active_delver should be in party, so 0.25 will also get added.
         for d in all_delvers {
-            total += d.get_stat(stat) * 0.1;
+            total += d.get_stat(stat) * 0.25;
         }
         total
     }
@@ -111,7 +137,8 @@ impl Delver {
         let mut statvalue =  match stat {
             DelverStats::Exploriness => self.base.exploriness,
             DelverStats::Fightiness => self.base.fightiness,
-            DelverStats::Speediness => self.base.speediness
+            DelverStats::Magiciness => self.base.magiciness,
+            DelverStats::Supportiveness => self.base.supportiveness
         };
         for m in &self.modifiers {
             statvalue = m.get_delver_stat(stat, statvalue)
@@ -129,7 +156,8 @@ impl fmt::Display for Delver {
 pub enum DelverStats {
     Exploriness,
     Fightiness,
-    Speediness
+    Magiciness,
+    Supportiveness
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -137,13 +165,14 @@ pub struct BaseDelver {
     pub name: String,
     pub exploriness: f32,
     pub fightiness: f32,
-    pub speediness: f32,
+    pub magiciness: f32,
+    pub supportiveness: f32,
     pub perm_mods: Vec<PermanentModifiers>
 }
 
 impl BaseDelver {
     pub fn new_delver(name: String) -> BaseDelver{
-        BaseDelver {name, exploriness:0.5, fightiness:0.5, speediness:0.5, perm_mods:Vec::new()}
+        BaseDelver {name, exploriness:0.5, fightiness:0.5, supportiveness:0.5,magiciness:0.5, perm_mods:Vec::new()}
     }
     pub fn to_game_delver(self) -> Delver {
         Delver::load_delver(self)
@@ -152,7 +181,7 @@ impl BaseDelver {
 
 impl fmt::Display for BaseDelver {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name)
+        write!(f, "{}", self.name.truecolor(252, 36, 0))
     }
 }
 
@@ -209,7 +238,7 @@ impl BaseDefender {
 }
 impl fmt::Display for BaseDefender {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name)
+        write!(f, "{}", self.name.truecolor(38,6,215))
     }
 }
 #[derive(Deserialize, Serialize, Clone)]
@@ -222,5 +251,10 @@ pub struct Dungeon {
 impl Dungeon {
     pub fn new_dungeon(name: String) -> Dungeon{
         Dungeon {name, twistiness:0.5, deadliness:0.5, lengthiness:0.5}
+    }
+}
+impl fmt::Display for Dungeon {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name.truecolor(38,6,215))
     }
 }

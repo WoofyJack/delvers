@@ -2,10 +2,10 @@
     {
         "team_name":"The Baltimore Crabs",
         "delvers": [
-            {"name":"Fighter","exploriness":0.3,"fightiness":0.8,"speediness":0.3,"perm_mods":["Pheonix"]},
-            {"name":"Nimble","exploriness":0.7,"fightiness":0.3,"speediness":0.7,"perm_mods":["Pheonix"]},
-            {"name":"Magic","exploriness":0.7,"fightiness":0.3,"speediness":0.3,"perm_mods":["Pheonix"]},
-            {"name":"Suppot","exploriness":0.3,"fightiness":0.3,"speediness":0.3,"perm_mods":["Pheonix"]}
+            {"name":"Fighter","exploriness":0.3,"fightiness":0.7,"magiciness":0.3,"supportiveness":0.3,"perm_mods":["Pheonix"]},
+            {"name":"Nimble","exploriness":0.7,"fightiness":0.3,"magiciness":0.3,"supportiveness":0.3,"perm_mods":["Pheonix"]},
+            {"name":"Magic","exploriness":0.3,"fightiness":0.3,"magiciness":0.7,"supportiveness":0.3,"perm_mods":["Pheonix"]},
+            {"name":"Suppot","exploriness":0.3,"fightiness":0.3,"magiciness":0.3,"supportiveness":0.7,"perm_mods":["Pheonix"]}
         ],
         "dungeon" : {
             "name":"The Crabitat",
@@ -13,7 +13,8 @@
             "deadliness":0.5,
             "lengthiness":0.5
         },
-        "defenders": []
+        "defenders": [],
+        "color":[252, 36, 0]
     },
     {
         "team_name":"The Antalya Pirates",
@@ -26,7 +27,8 @@
         },
         "defenders": [
             {"name":"Tia Brie","fightiness":0.8,"perm_mods":["Pheonix"]}
-        ]
+        ],
+        "color":[38,6,215]
     }
 
 ]
