@@ -1,7 +1,7 @@
 use crate::teams::{Stats};
 use crate::locations::Coordinate;
 use crate::sim::Game;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 
 #[derive(Debug)]
 pub struct Event {
@@ -15,7 +15,7 @@ impl Event {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Entity {
     Delver {index:usize},
     Room {index:Coordinate},

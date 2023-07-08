@@ -20,6 +20,7 @@ pub struct  Sim {
     pub finished:bool
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Game {
     pub phase:GamePhase,
 
@@ -66,7 +67,7 @@ impl Sim {
     pub fn render(&self) {
         let waittime = time::Duration::from_secs(0);
         for p in &self.game.delverteam.delvers {
-            let delvername = if p.active {p.to_string().normal()} else {p.to_string().truecolor(100,100,100)};
+            let delvername =p.to_string();
             print!("{}: ",delvername);
 
             let active = "O".red();
@@ -100,10 +101,10 @@ impl Sim {
         }
         println!("{}", self.game.last_log_message);
         
-        for e in &self.eventqueue.events {
-            print!("{:?}", e.event_type);
-        }
-        println!();
+        // for e in &self.eventqueue.events {
+        //     print!("{:?}", e.event_type);
+        // }
+        // println!();
         
         thread::sleep(waittime);
         println!()
@@ -249,8 +250,10 @@ impl Sim {
             }
             EventType::StartBossFight => {
                 let defender = self.game.defenderteam.defender.clone().to_game_defender();
+                let message = self.game.delverteam.to_string() + " challenge " + &self.game.defenderteam.to_string() +"'s defender " + &defender.to_string();
+                self.eventqueue.log(message);
                 self.game.defenderteam.active_defenders.push(defender);
-
+                
             }
             EventType::Tick => {
                 crate::core_loop::tick(self, rng);

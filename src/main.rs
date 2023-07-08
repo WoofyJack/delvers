@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use crate::events::EventQueue;
 
 use crate::teams::{BaseTeam, DelverTeam, DefenderTeam, Defender, BaseDefender};
-use crate::locations::{Coordinate, Room, BossFight};
+use crate::locations::{Coordinate, Room, RoomType};
 use crate::sim::{Game, Sim};
 
 use rand::prelude::*;
@@ -43,7 +43,7 @@ fn main() {
     for i in 0..5 {
         rooms.insert(Coordinate(i,0), Room::new_room(&mut rng));
     }
-    let room = Room {complete:false, room_type:Box::new(BossFight)};
+    let room = Room {complete:false, room_type:RoomType::BossFight};
     rooms.insert(Coordinate(rooms.len() as i8, 0), room);
 
     let game = Game::new_game(delver_team, defender_team, rooms);

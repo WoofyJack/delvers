@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use core::panic;
 use std::ops::Add;
 use std::fmt;
@@ -8,33 +8,51 @@ use crate::{sim::Game,
     events::{EventType,EventQueue, Scene, Entity}, 
     teams::Stats};
 
+#[derive(Serialize, Deserialize)]
 pub struct Room {
     pub complete:bool,
-    pub room_type:Box<dyn RoomType>
+    pub room_type:RoomType
 }
 impl Room {
     pub fn new_room(rng: &mut impl Rng) -> Room {
-        let room_type:Box<dyn RoomType> = match rng.gen_range(0..2) {
-            0 => Box::new(Trapped),
-            1 => Box::new(ArcaneWard),
+        let room_type = match rng.gen_range(0..2) {
+            0 => RoomType::Arcane,
+            1 => RoomType::Trapped,
             _ => panic!("Fix the rng range"),
         };
 
         Room {complete: false, room_type}
     }
 }
-pub trait RoomType {
+#[derive(Serialize, Deserialize)]
+pub enum RoomType {
+    Trapped,
+    Arcane,
+    BossFight
+}
+impl RoomType {
     fn on_enter(&self, _game:&Game,  room:Entity, _queue:&mut EventQueue) {}
-    fn attempt_clear(&self, _game:&Game,  room:Entity, delver:Entity, queue:&mut EventQueue) {
-        queue.events.push(EventType::ClearRoom.target(delver,room));
+    pub fn attempt_clear(&self, game:&Game,  room:Entity, delver:Entity, queue:&mut EventQueue) {
+        // queue.events.push(EventType::ClearRoom.target(delver,room));
+        match self {
+            RoomType::Arcane => {arcane_ward::attempt_clear(game, room, delver, queue)}
+            RoomType::Trapped => {trapped::attempt_clear(game, room, delver, queue)}
+            RoomType::BossFight => {bossfight::attempt_clear(game, room, delver, queue)}
+        }
     }
     fn on_exit(&self, _game:&Game,  room:Entity, _queue:&mut EventQueue) {}
-    fn base_stat(&self) -> Stats;
+    pub fn base_stat(&self) -> Stats {
+        match self {
+            RoomType::Arcane => arcane_ward::base_stat(),
+            RoomType::Trapped => trapped::base_stat(),
+            RoomType::BossFight => bossfight::base_stat()
+        }
+    }
 }
 
-pub struct Trapped;
-impl RoomType for Trapped {
-    fn attempt_clear(&self, game:&Game,  room:Entity, delver:Entity, queue:&mut EventQueue) {
+mod trapped {
+    use crate::locations::*;
+    pub fn attempt_clear(game:&Game,  room:Entity, delver:Entity, queue:&mut EventQueue) {
         let trigger_index = game.rand_target;
         let trigger_delver = Entity::Delver { index: trigger_index};
 
@@ -44,29 +62,30 @@ impl RoomType for Trapped {
                                         delver.to_string(game) + " disarms the traps");
         let fail = (EventType::Damage {amount: 1 }.target(room,trigger_delver),
             trigger_delver.to_string(game) + " triggers a trap room, hurting themselves");
-        let scene = Box::new(Scene {begin, difficulty:0.8, stat:self.base_stat(), success, fail});
+        let scene = Box::new(Scene {begin, difficulty:0.8, stat:base_stat(), success, fail});
 
         queue.events.push(EventType::Scene { scene }.no_target(room));
     }
-    fn base_stat(&self) -> Stats {
+    pub fn base_stat() -> Stats {
         Stats::Fightiness
     }
 }
-pub struct BossFight;
-impl RoomType for BossFight {
-    fn attempt_clear(&self, _game:&Game,  room:Entity, delver:Entity, queue:&mut EventQueue) {
+
+mod bossfight{
+    use crate::locations::*;
+    pub fn attempt_clear(_game:&Game,  room:Entity, delver:Entity, queue:&mut EventQueue) {
         let event = EventType::StartBossFight.no_target(room);
         queue.events.push(event);
         let event = EventType::ClearRoom.target(delver, room);
         queue.events.push(event);
     }
-    fn base_stat(&self) -> Stats {
+    pub fn base_stat() -> Stats {
         Stats::Fightiness
     }
 }
-pub struct ArcaneWard;
-impl RoomType for ArcaneWard {
-    fn attempt_clear(&self, game:&Game,  room:Entity, delver:Entity, queue:&mut EventQueue) {
+mod arcane_ward {
+    use crate::locations::*;
+    pub fn attempt_clear(game:&Game,  room:Entity, delver:Entity, queue:&mut EventQueue) {
         let trigger_index = game.rand_target;
         let trigger_delver = Entity::Delver { index: trigger_index};
 
@@ -76,16 +95,16 @@ impl RoomType for ArcaneWard {
                                                         ,delver.to_string(game) + " clears the arcane ward");
         let fail = (EventType::Damage {amount: 2 }.target(room, trigger_delver),
                                                         trigger_delver.to_string(game) + " is exploded by a magical wrad.");
-        let scene = Box::new(Scene {begin, difficulty:0.6, stat:self.base_stat(), success, fail});
+        let scene = Box::new(Scene {begin, difficulty:0.6, stat:base_stat(), success, fail});
 
         queue.events.push(EventType::Scene { scene }.no_target(room));
     }
-    fn base_stat(&self) -> Stats {
+    pub fn base_stat() -> Stats {
         Stats::Magiciness
     }
 }
 
-#[derive(Debug,Copy,Clone,Eq, Hash, PartialEq, Serialize)]
+#[derive(Debug,Copy,Clone,Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub struct Coordinate(pub i8, pub i8);
 impl Add for Coordinate {
     type Output = Self;

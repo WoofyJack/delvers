@@ -4,7 +4,7 @@ use serde_json::{Value};
 use std::fs;
 use colored::Colorize;
 
-use crate::{modifiers::{Modifier, BaseModifier}, events::Entity};
+use crate::{modifiers::{BaseModifier}, events::Entity};
 
 #[derive(Deserialize, Serialize)]
 pub struct BaseTeam {
@@ -28,6 +28,7 @@ impl fmt::Display for BaseTeam {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct DelverTeam {
     name:String,
     pub delvers:Vec<Delver>,
@@ -84,11 +85,12 @@ impl fmt::Display for DelverTeam {
         write!(f, "{}", self.name.truecolor(252, 36, 0))
     }
 }
+#[derive(Serialize, Deserialize)]
 pub struct Delver {
     base: BaseDelver,
     pub hp:i8,
     pub active:bool,
-    pub modifiers:Vec<Box<dyn Modifier>>
+    pub modifiers:Vec<BaseModifier>
 }
 
 impl Delver {
@@ -96,10 +98,11 @@ impl Delver {
     //     Delver{ base: &BaseDelver::new_delver(name), hp: 5, active:true, modifiers: Vec::new()}
     // }
     pub fn load_delver (base: BaseDelver) -> Delver {
-        let mut modifiers = Vec::new();
-        for i in &base.perm_mods {
-            modifiers.push(BaseModifier::to_game_mod(i));
-        }
+        // let mut modifiers = Vec::new();
+        // for i in &base.perm_mods {
+        //     modifiers.push(BaseModifier::to_game_mod(i));
+        // }
+        let modifiers = base.perm_mods.clone();
         Delver {base, hp: 5, active: true, modifiers}
     }
     pub fn to_json(&self) -> String {
@@ -134,7 +137,12 @@ impl Delver {
 
 impl fmt::Display for Delver {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.base.fmt(f)
+        let mut name = self.base.name.truecolor(252, 36, 0);
+        if !self.active {
+            name = name.truecolor(100, 100, 100);
+        };
+
+        write!(f, "{}", name)
     }
 }
 #[derive(Clone, Copy,Debug)]
@@ -166,10 +174,11 @@ impl BaseDelver {
 
 impl fmt::Display for BaseDelver {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name.truecolor(252, 36, 0))
+        write!(f, "{}", self.name)
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct DefenderTeam {
     name:String,
     pub defender:BaseDefender,
@@ -189,18 +198,20 @@ impl fmt::Display for DefenderTeam {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Defender {
     base: BaseDefender,
     pub hp:i8,
     pub active:bool,
-    pub modifiers:Vec<Box<dyn Modifier>>
+    pub modifiers:Vec<BaseModifier>
 }
 impl Defender {
     pub fn load_defender (base: BaseDefender) -> Defender {
-        let mut modifiers = Vec::new();
-        for i in &base.perm_mods {
-            modifiers.push(BaseModifier::to_game_mod(i));
-        }
+        // let mut modifiers = Vec::new();
+        // for i in &base.perm_mods {
+        //     modifiers.push(BaseModifier::to_game_mod(i));
+        // }
+        let modifiers = base.perm_mods.clone();
         Defender {base, hp: 5, active: true, modifiers}
     }
     pub fn to_json(&self) -> String {
@@ -221,7 +232,15 @@ impl Defender {
 }
 impl fmt::Display for Defender {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.base.fmt(f)
+        let mut name = self.base.name.normal();
+        name = if self.active {
+            name.truecolor(38,6,215)
+        }
+        else {
+            name.truecolor(100, 100, 100)
+        };
+
+        write!(f, "{}", name)
     }
 }
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -243,7 +262,7 @@ impl BaseDefender {
 }
 impl fmt::Display for BaseDefender {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name.truecolor(38,6,215))
+        write!(f, "{}", self.name)
     }
 }
 #[derive(Deserialize, Serialize, Clone)]

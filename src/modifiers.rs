@@ -7,7 +7,7 @@ use crate::teams::{Stats};
 
 
 pub struct ModToApply <'a> {
-    pub modifier: &'a Box<dyn Modifier>,
+    pub modifier: &'a BaseModifier,
     pub relation: ModRelation
 }
 #[derive(Clone, Copy)]
@@ -15,44 +15,33 @@ pub enum ModRelation {
     Target, Source
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum BaseModifier {
     Pheonix,
     DoubleOrNothing
 }
 impl BaseModifier {
-    pub fn to_game_mod(&self) -> Box<dyn Modifier> {
+    pub fn replace_event(&self, event:Event, relation:ModRelation, game:&Game, queue:&mut EventQueue) -> ReplaceOutcomes {
         match self {
-            BaseModifier::Pheonix => Box::new(Pheonix),
-            BaseModifier::DoubleOrNothing => Box::new(DoubleOrNothing)
+            BaseModifier::Pheonix => Pheonix::replace_event(event, relation, game, queue),
+            BaseModifier::DoubleOrNothing => DoubleOrNothing::replace_event(event, relation, game, queue),
+            _ => ReplaceOutcomes::Event {event}
         }
     }
-}
-
-pub fn load_modifer(save:String) -> Box<dyn Modifier> {
-    Box::new(Pheonix)
-}
-
-// Jumping through hoops cus we aren't allowed to modify game while we're iterating through modifiers stored in game.
-pub trait Modifier {
-    // on_phase
-    fn replace_event(&self, event:Event, relation:ModRelation, _game:&Game, _queue:&mut EventQueue) -> ReplaceOutcomes {ReplaceOutcomes::Event {event}}
-    fn pre_event(&self, _event:&Event, relation:ModRelation,  _game:&Game, _queue:&mut EventQueue) {}
-    fn get_delver_stat(&self, _stat:Stats, statvalue:f32) -> f32 {statvalue}
-    fn get_defender_stat(&self, _stat:Stats, statvalue:f32) -> f32 {statvalue}
-}
-
-pub enum ReplaceOutcomes{
-    Stop,
-    Event {event:Event},
-    Chance {chance:f32, outcomes:OutcomesWithImmediate}
+    pub fn pre_event(&self, _event:&Event, relation:ModRelation,  _game:&Game, _queue:&mut EventQueue) {
+        match self {
+            _ => ()
+        }
+    }
+    pub fn get_delver_stat(&self, _stat:Stats, statvalue:f32) -> f32 {statvalue}
+    pub fn get_defender_stat(&self, _stat:Stats, statvalue:f32) -> f32 {statvalue}
 }
 
 
+mod Pheonix {
+    use crate::modifiers::*;
 
-pub struct Pheonix;
-impl Modifier for Pheonix { // I guess just allow modifiers to do their own rolls. No, trait objects don't like being passed rng.
-    fn replace_event(&self, event:Event, relation:ModRelation, game:&Game, _queue:&mut EventQueue) -> ReplaceOutcomes {
+    pub fn replace_event(event:Event, relation:ModRelation, game:&Game, _queue:&mut EventQueue) -> ReplaceOutcomes {
         match relation { 
             ModRelation::Target => (),
             _ => return ReplaceOutcomes::Event {event}
@@ -78,11 +67,10 @@ impl Modifier for Pheonix { // I guess just allow modifiers to do their own roll
             _ => ReplaceOutcomes::Event {event}
         }
     }
-
 }
-pub struct DoubleOrNothing;
-impl Modifier for DoubleOrNothing {
-    fn replace_event(&self, event:Event,  relation:ModRelation, game:&Game, queue:&mut EventQueue) -> ReplaceOutcomes {
+mod DoubleOrNothing {
+    use crate::modifiers::*;
+    pub fn replace_event(event:Event,  relation:ModRelation, game:&Game, queue:&mut EventQueue) -> ReplaceOutcomes {
         // let self_name = match relation {
         //     ModRelation::Source => event.source.to_string(game),
         //     ModRelation::Target => event.target.to_string(game),
@@ -98,5 +86,10 @@ impl Modifier for DoubleOrNothing {
             _ => ReplaceOutcomes::Event {event}
         }
     }
+}
 
+pub enum ReplaceOutcomes{
+    Stop,
+    Event {event:Event},
+    Chance {chance:f32, outcomes:OutcomesWithImmediate}
 }

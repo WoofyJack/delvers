@@ -1,5 +1,6 @@
 use rand::Rng;
-use serde::Serialize;
+use rand::seq::{SliceRandom, IteratorRandom};
+use serde::{Serialize, Deserialize};
 
 use crate::locations::{Coordinate, Room};
 use crate::teams::{Stats};
@@ -7,7 +8,7 @@ use crate::events::{Entity, Event, EventType, Outcomes};
 use crate::sim::{Sim, roll};
 
 
-#[derive(PartialEq, Eq, Serialize)]
+#[derive(PartialEq, Eq, Serialize, Deserialize)]
 pub enum GamePhase {
     NotStarted,
     TurnStart,
@@ -34,7 +35,19 @@ pub fn tick(sim: &mut Sim, rng:&mut impl Rng) -> () {
         }
         GamePhase::TurnStart => {
             if sim.game.defenderteam.active_defenders.len() > 0 {
-                sim.game.phase = GamePhase::Combat {source:sim.game.delverteam.choose_delver(Stats::Fightiness), target: Entity::Defender {index:0}}
+                let defenders = 0..sim.game.defenderteam.active_defenders.len();
+                let (source, target) = 
+                if rng.gen_bool(0.5) { // Defender attacks
+                    let active_delvers = sim.game.delverteam.active_delvers();
+                    let target =  Entity::Delver{index:*active_delvers.choose(rng).unwrap()};
+                    let source = Entity::Defender {index:defenders.choose(rng).unwrap()};
+                    (source, target)
+                } else { // Delvers attack
+                    let source = sim.game.delverteam.choose_delver(Stats::Fightiness);
+                    let target = Entity::Defender {index:defenders.choose(rng).unwrap()};
+                    (source, target)
+                };
+                sim.game.phase = GamePhase::Combat {source, target};
             } else {
                 sim.game.phase = GamePhase::Encounter;
             }
@@ -77,6 +90,8 @@ pub fn tick(sim: &mut Sim, rng:&mut impl Rng) -> () {
         }
         GamePhase::Finished => {}
         GamePhase::Combat {source, target} => {
+            sim.game.phase = GamePhase::TurnStart;
+
             let source_stat = source.get_stat(&sim.game, Stats::Fightiness);
             let target_stat = target.get_stat(&sim.game, Stats::Fightiness);
 
@@ -95,7 +110,6 @@ pub fn tick(sim: &mut Sim, rng:&mut impl Rng) -> () {
                 sim.eventqueue.events.push (EventType::Damage { amount: 1 }.target(target, source))
             }
             sim.eventqueue.events.push(EventType::Log { message }.no_target_no_source());
-            sim.game.phase = GamePhase::Combat { source: target, target: source };
         }
     }
 }
