@@ -4,31 +4,16 @@ use std::ops::Add;
 use std::fmt;
 use rand::Rng;
 
-use crate::{sim::Game,
-    events::{Event, EventType,EventQueue, Entity,Outcomes}, 
-    teams::Stats, messaging::Message};
+use crate::{sim::Game, events::{Event, EventType,EventQueue, Outcomes}, messaging::Message, combat::Monster};
+use crate::entities::{Stats, Defender, Entity};
 
-#[derive(Serialize, Deserialize)]
-pub struct Room {
-    pub complete:bool,
-    pub room_type:RoomType
-}
-impl Room {
-    pub fn new_room(rng: &mut impl Rng) -> Room {
-        let room_type = match rng.gen_range(0..2) {
-            0 => RoomType::Arcane,
-            1 => RoomType::Trapped,
-            _ => panic!("Fix the rng range"),
-        };
 
-        Room {complete: false, room_type}
-    }
-}
 #[derive(Serialize, Deserialize)]
 pub enum RoomType {
     Trapped,
     Arcane,
-    BossFight
+    BossFight,
+    Fight {monsters:Vec<Monster>, partyname:String}
 }
 impl RoomType {
     fn on_enter(&self, _game:&Game,  room:Entity, _queue:&mut EventQueue) {}
@@ -38,6 +23,7 @@ impl RoomType {
             RoomType::Arcane => {arcane_ward::attempt_clear(game, room, delver, queue)}
             RoomType::Trapped => {trapped::attempt_clear(game, room, delver, queue)}
             RoomType::BossFight => {bossfight::attempt_clear(game, room, delver, queue)}
+            RoomType::Fight {monsters, partyname} => {fight::attempt_clear(game, room, delver, queue, monsters, partyname.clone())}
         }
     }
     fn on_exit(&self, _game:&Game,  room:Entity, _queue:&mut EventQueue) {}
@@ -45,13 +31,14 @@ impl RoomType {
         match self {
             RoomType::Arcane => arcane_ward::base_stat(),
             RoomType::Trapped => trapped::base_stat(),
-            RoomType::BossFight => bossfight::base_stat()
+            RoomType::BossFight => bossfight::base_stat(),
+            RoomType::Fight { .. } => fight::base_stat()
         }
     }
 }
 
 mod trapped {
-    use crate::locations::*;
+    use crate::room_types::*;
     pub fn attempt_clear(game:&Game,  room:Entity, delver:Entity, queue:&mut EventQueue) {
         let trigger_index = game.rand_target;
         let trigger_delver = Entity::Delver { index: trigger_index};
@@ -76,7 +63,7 @@ mod trapped {
 }
 
 mod bossfight{
-    use crate::locations::*;
+    use crate::room_types::*;
     pub fn attempt_clear(_game:&Game,  room:Entity, delver:Entity, queue:&mut EventQueue) {
         let event = Event{event_type:EventType::StartBossFight, source:room, target:Entity::None, message:Message::None};
         queue.events.push(event);
@@ -87,8 +74,31 @@ mod bossfight{
         Stats::Fightiness
     }
 }
+mod fight {
+    use crate::room_types::*;
+    pub fn attempt_clear(game:&Game,  room:Entity, delver:Entity, queue:&mut EventQueue, monsters:&Vec<Monster>, partyname:String) {
+        let mut monsters = (*monsters).clone();
+        
+        let event = Event{event_type:EventType::ClearRoom, source:delver, target: room, message:Message::None};
+        queue.events.push(event);
+        let final_monster = monsters.remove(0);
+        let defender = final_monster.to_game_defender();
+        let message = Message::Encounters(partyname);
+        let event = Event{event_type:EventType::SpawnDefender(defender), source:room, target: Entity::None, message};
+        queue.events.push(event);
+        for m in monsters {
+            let defender = m.to_game_defender();
+            let event = Event{event_type:EventType::SpawnDefender(defender), source:room, target: Entity::None, message:Message::None};
+            queue.events.push(event);
+        }
+
+    }
+    pub fn base_stat() -> Stats {
+        Stats::Fightiness
+    }
+}
 mod arcane_ward {
-    use crate::locations::*;
+    use crate::room_types::*;
     pub fn attempt_clear(game:&Game,  room:Entity, delver:Entity, queue:&mut EventQueue) {
         let trigger_index = game.rand_target;
         let trigger_delver = Entity::Delver { index: trigger_index};

@@ -1,5 +1,5 @@
-use crate::events::Entity;
-use crate::locations::Coordinate;
+use crate::entities::Entity;
+use crate::room_types::Coordinate;
 use crate::sim::Game;
 use serde::{Serialize, Deserialize};
 
@@ -14,6 +14,7 @@ pub enum Message {
     FailedNavigation (Entity),
     Custom (String),
     Death (Entity),
+    Encounters (String), //defender_name (Message is applied to spawning event, before Entity exists)
     None
 }
 
@@ -28,6 +29,7 @@ impl Message {
             Message::FailedNavigation(navigator) => navigator.to_string(game) + " hurts themselves while navigating.",
             Message::Custom(message) => message.clone(),
             Message::Death(dier) => dier.to_string(game) + " dies.",
+            Message::Encounters(defender_name) => String::from("The party encounters a ") + &defender_name,
             Message::None => game.last_log_message.clone()
         }
     }

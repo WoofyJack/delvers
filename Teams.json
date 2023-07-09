@@ -3,7 +3,7 @@
         "team_name":"The Baltimore Crabs",
         "delvers": [
             {"name":"Fighter","exploriness":0.3,"fightiness":0.7,"magiciness":0.3,"supportiveness":0.3,"perm_mods":["Pheonix"]},
-            {"name":"Nimble","exploriness":0.7,"fightiness":0.3,"magiciness":0.3,"supportiveness":0.3,"perm_mods":["Pheonix"]},
+            {"name":"Nimble","exploriness":0.7,"fightiness":0.3,"magiciness":0.3,"supportiveness":0.3,"perm_mods":["TrailBlazer"]},
             {"name":"Magic","exploriness":0.3,"fightiness":0.3,"magiciness":0.7,"supportiveness":0.3,"perm_mods":["Pheonix"]},
             {"name":"Suppot","exploriness":0.3,"fightiness":0.3,"magiciness":0.3,"supportiveness":0.7,"perm_mods":["Pheonix"]}
         ],

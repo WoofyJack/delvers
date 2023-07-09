@@ -2,9 +2,9 @@ use rand::Rng;
 use rand::seq::{SliceRandom, IteratorRandom};
 use serde::{Serialize, Deserialize};
 
-use crate::locations::{Coordinate, Room};
-use crate::teams::{Stats};
-use crate::events::{Entity, Event, EventType, Outcomes};
+use crate::room_types::{Coordinate};
+use crate::events::{Event, EventType, Outcomes};
+use crate::entities::{Entity, Stats, Room};
 use crate::sim::{Sim, roll};
 use crate::messaging::Message;
 
@@ -40,7 +40,7 @@ pub fn tick(sim: &mut Sim, rng:&mut impl Rng) -> () {
                 if rng.gen_bool(0.5) { // Defender attacks
                     let active_delvers = sim.game.delverteam.active_delvers();
                     let target =  Entity::Delver{index:*active_delvers.choose(rng).unwrap()};
-                    let source = Entity::Defender {index:defenders.choose(rng).unwrap()};
+                    let source = sim.game.defenderteam.choose_defender(Stats::Fightiness);
                     (source, target)
                 } else { // Delvers attack
                     let source = sim.game.delverteam.choose_delver(Stats::Fightiness);
@@ -75,12 +75,11 @@ pub fn tick(sim: &mut Sim, rng:&mut impl Rng) -> () {
 
             let position = sim.game.delver_position + Coordinate(1,0);
 
-            let message = active_delver.to_string(&sim.game) + " guides the delvers to " + &position.to_string();
             let message = Message::Travel (active_delver, position);
-            let success = vec![Event {event_type:EventType::Move(position), source:Entity::None, target:active_delver, message}];
+            let success = vec![Event {event_type:EventType::Move(position), source:active_delver, target:Entity::None, message}];
             
             let message = Message::FailedNavigation (active_delver);
-            let fail = vec![Event {event_type:EventType::Damage(1), target:active_delver, source:Entity::None, message}];
+            let fail = vec![Event {event_type:EventType::Damage(1), target:active_delver, source:Entity::Dungeon, message}];
             
             let outcomes = Outcomes{success, fail};
             let message = Message::BeginNavigation(active_delver);
@@ -92,8 +91,8 @@ pub fn tick(sim: &mut Sim, rng:&mut impl Rng) -> () {
         GamePhase::Combat {source, target} => {
             sim.game.phase = GamePhase::TurnStart;
 
-            let source_stat = source.get_stat(&sim.game, Stats::Fightiness);
-            let target_stat = target.get_stat(&sim.game, Stats::Fightiness);
+            let source_stat = source.collect_stats(&sim.game, Stats::Fightiness);
+            let target_stat = target.collect_stats(&sim.game, Stats::Fightiness);
 
             let source_name = source.to_string(&sim.game);
             let target_name = target.to_string(&sim.game);

@@ -7,8 +7,10 @@
 
 #![allow(dead_code, unused_imports)]
 mod teams;
+mod entities;
+mod base_entities;
 mod sim;
-mod locations;
+mod room_types;
 mod modifiers;
 mod core_loop;
 mod events;
@@ -25,9 +27,11 @@ use std::fs::File;
 use std::collections::HashMap;
 use crate::events::EventQueue;
 
-use crate::teams::{BaseTeam, DelverTeam, DefenderTeam, Defender, BaseDefender};
-use crate::locations::{Coordinate, Room, RoomType};
+use crate::base_entities::{BaseTeam, BaseDefender};
+use crate::entities::{DelverTeam, DefenderTeam};
+use crate::room_types::{Coordinate, RoomType};
 use crate::sim::{Game, Sim};
+use crate::entities::{Room};
 
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
@@ -58,49 +62,55 @@ impl RngSaver {
 }
 
 fn main() {
-    let load_from_save = false;
     colored::control::set_virtual_terminal(true).unwrap();
 
 
     let mut rng = rand::thread_rng();
 
-    let mut rng = if load_from_save {
-        let file = std::fs::read_to_string("rngsave.json").unwrap();
-        let rngsave:RngSaver = serde_json::from_str(&file).unwrap();
-        rngsave.load_rng()
+    let mut rng = ChaCha8Rng::seed_from_u64(rng.gen());
 
-    } else { ChaCha8Rng::seed_from_u64(rng.gen())};
+    let team1 = BaseTeam::load_from_file("Teams.json", 0);
+    let delver_team = DelverTeam::load_team(&team1);
+    
+    let team2 = BaseTeam::load_from_file("Teams.json", 1);
+    let defender_team = DefenderTeam::load_team(&team2);
+    
+    let mut rooms: HashMap<Coordinate, Room> = HashMap::new();
+    for i in 0..5 {
+        rooms.insert(Coordinate(i,0), Room::new_room(&mut rng));
+    }
+    let room = Room {complete:false, room_type:RoomType::BossFight};
+    rooms.insert(Coordinate(rooms.len() as i8, 0), room);
 
-    let mut sim = if load_from_save {
-        let file = std::fs::read_to_string("GameSave.json").unwrap();
-        serde_json::from_str(&file).unwrap()
-    } else {
-        let team1 = BaseTeam::load_from_file("Teams.json", 0);
-        let delver_team = DelverTeam::load_team(&team1);
-        
-        let team2= BaseTeam::load_from_file("Teams.json", 1);
-        let defender_team = DefenderTeam::load_team(&team2);
-        
-        let mut rooms: HashMap<Coordinate, Room> = HashMap::new();
-        for i in 0..5 {
-            rooms.insert(Coordinate(i,0), Room::new_room(&mut rng));
-        }
-        let room = Room {complete:false, room_type:RoomType::BossFight};
-        rooms.insert(Coordinate(rooms.len() as i8, 0), room);
-
-        let game = Game::new_game(delver_team, defender_team, rooms);
-        Sim {game, finished:false, eventqueue:EventQueue::new_queue()}
-    };
+    let game = Game::new_game(delver_team, defender_team, rooms);
+    let mut sim = Sim {game, finished:false, eventqueue:EventQueue::new_queue()};
     // println!("{} are delving into the {}'s dungeon, {}", team1.to_string(), team2.to_string(), team2.dungeon.to_string());
 
+    println!("Play dlungeon!");
     let waittime = time::Duration::from_secs(2);
     thread::sleep(waittime);
-    println!("Play dlungeon!");
 
-    if !load_from_save {
-    sim.next_frame(&mut rng);
-    sim.next_frame(&mut rng);
-    sim.next_frame(&mut rng);
+    loop {
+        if !sim.next_frame(&mut rng) {
+            break
+        }
+
+    }
+
+}
+
+fn load() -> (ChaCha8Rng, Sim) {
+    let file = std::fs::read_to_string("rngsave.json").unwrap();
+    let rngsave:RngSaver = serde_json::from_str(&file).unwrap();
+    rngsave.load_rng();
+
+    let file = std::fs::read_to_string("GameSave.json").unwrap();
+    let sim = serde_json::from_str(&file).unwrap();
+
+    (rngsave.load_rng(), sim) 
+}
+
+fn save(rng: ChaCha8Rng, sim:Sim) {
     let game_save = serde_json::to_string_pretty(&sim).unwrap();
     let mut file = File::create("GameSave.json").unwrap();
     write!(file, "{}", game_save).unwrap();
@@ -109,14 +119,4 @@ fn main() {
     let rng_save = serde_json::to_string(&rngsaver).unwrap();
     let mut file = File::create("rngsave.json").unwrap();
     write!(file, "{}", rng_save).unwrap();
-
-
-    }
-    loop {
-        if !sim.next_frame(&mut rng) {
-            break
-        }
-
-    }
-
 }

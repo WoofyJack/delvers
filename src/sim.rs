@@ -6,11 +6,11 @@ use rand_pcg::Pcg32;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::locations::{Coordinate, Room};
+use crate::room_types::{Coordinate};
 use crate::messaging::Message;
 use crate::modifiers::{ReplaceOutcomes, ModToApply, ModRelation};
-use crate::teams::{Dungeon, Stats, DelverTeam, Delver, Defender, DefenderTeam};
-use crate::events::{EventQueue, Entity, Event, EventType, Outcomes};
+use crate::entities::{Entity, Room, Stats, Delver, Defender, DelverTeam, DefenderTeam, Dungeon};
+use crate::events::{EventQueue, Event, EventType, Outcomes};
 use crate::core_loop::{GamePhase};
 
 use std::collections::HashMap;
@@ -81,7 +81,7 @@ impl Sim {
 
             let active = "O".red();
             let inactive = "O";
-            for i in 0..5 {
+            for i in 0..p.maxhp {
                 if i+1 <= p.hp {
                     print!("{}", active);
                 }
@@ -98,7 +98,7 @@ impl Sim {
 
             let active = "O".red();
             let inactive = "O";
-            for i in 0..5 {
+            for i in 0..p.maxhp {
                 if i+1 <= p.hp {
                     print!("{}", active);
                 }
@@ -216,16 +216,17 @@ impl Sim {
             EventType::Heal (amount) => {
                 match event.target {
                     Entity::Delver { index } => {
-                        self.game.delverteam.delvers[index].hp += amount;
-                        if self.game.delverteam.delvers[index].hp > 5 {
-                            self.game.delverteam.delvers[index].hp = 5;
+                        let delver = self.game.delverteam.delvers.get_mut(index).unwrap();
+                        delver.hp += amount;
+                        if delver.hp > delver.maxhp {
+                            delver.hp = delver.maxhp;
                         }
                     }
                     Entity::Defender {index}=> {
                         let mut defender = self.game.defenderteam.active_defenders.get_mut(index).unwrap();
                         defender.hp += amount;
-                        if defender.hp > 5 {
-                            defender.hp = 5;
+                        if defender.hp > defender.maxhp {
+                            defender.hp = defender.maxhp;
                         }
                     }
                     _ => ()
@@ -252,7 +253,7 @@ impl Sim {
             }
             }
             EventType::Move (position ) => {
-                match event.target {
+                match event.source {
                     Entity::Delver { index } => {}
                     _ => {panic!("Invalid target")}
                 }
@@ -262,7 +263,9 @@ impl Sim {
                 }
             }
             EventType::StartBossFight => {
-                let defender = self.game.defenderteam.defender.clone().to_game_defender();
+                let mut defender = self.game.defenderteam.defender.clone().to_game_defender();
+                defender.maxhp = 7;
+                defender.hp = 7;
                 let message = Message::Custom(self.game.delverteam.to_string() + " challenge " + &self.game.defenderteam.to_string() +"'s defender " + &defender.to_string());
                 self.eventqueue.log(message);
                 self.game.defenderteam.active_defenders.push(defender);
@@ -272,23 +275,23 @@ impl Sim {
                 crate::core_loop::tick(self, rng);
             }
             //  -------------------- Complex events: Cannot be accessed afterwards, because their insides are often consumed. -------------
+            EventType::SpawnDefender (defender) => {
+                self.game.defenderteam.active_defenders.push(defender);
+            }
             EventType::Roll { difficulty, stat, outcomes} => {
                 let active_delver = self.game.delverteam.choose_delver(stat);
                 
-                let total_stat = Delver::collect_stats(active_delver, &self.game.delverteam.delvers, stat);
+                let total_stat = Delver::collect_stats(&active_delver, &self.game.delverteam.delvers, stat);
 
                 let mut pushes = outcomes.get(roll(rng, total_stat) > difficulty * rng.gen::<f32>());
                 self.eventqueue.events.append(&mut pushes);
             }
+            EventType::Chance {chance, success, fail} => {
+                let event = if chance > rng.gen::<f32>() {success} else {fail};
+                self.eventqueue.events.push(*event);
+            }
             EventType::EndGame => {self.game.phase = GamePhase::Finished; self.eventqueue.log(Message::Custom(String::from("Game Ended")));}
             EventType::Log => (),
-                // self.game.last_log_message = message;
-            // }
-            // EventType::Scene { scene } => {
-            //     let (message, difficulty, stat, outcomes) = scene.unpack();
-            //     self.eventqueue.events.push(EventType::Roll {difficulty, stat, outcomes }.no_target_no_source());
-            //     self.eventqueue.events.push(EventType::Log { message }.no_target_no_source());
-            // }
             EventType::ClearRoom => {
                 let index =match event.target {
                     Entity::Room { index } => index,
