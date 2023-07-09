@@ -7,9 +7,10 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 use crate::locations::{Coordinate, Room};
+use crate::messaging::Message;
 use crate::modifiers::{ReplaceOutcomes, ModToApply, ModRelation};
 use crate::teams::{Dungeon, Stats, DelverTeam, Delver, Defender, DefenderTeam};
-use crate::events::{EventQueue, Entity, Event, EventType, Scene, Outcomes};
+use crate::events::{EventQueue, Entity, Event, EventType, Outcomes};
 use crate::core_loop::{GamePhase};
 
 use std::collections::HashMap;
@@ -121,7 +122,7 @@ impl Sim {
     pub fn resolve_last_event(&mut self, rng: &mut impl Rng) {
         let event = match self.eventqueue.events.pop() {
             Some(n) => n,
-            None => EventType::Tick.no_target_no_source()
+            None =>  Event::type_only(EventType::Tick)
         };
         self.resolve_event(rng,event);
     }
@@ -170,12 +171,10 @@ impl Sim {
                 let (m, relation) = (m.modifier, m.relation);
                 event = 
                 match m.replace_event(event, relation, &self.game, &mut self.eventqueue) {
-                    ReplaceOutcomes::Stop => EventType::Cancelled.no_target_no_source(),
+                    ReplaceOutcomes::Stop => Event::cancelled(),
                     ReplaceOutcomes::Event { event } => event,
-                    ReplaceOutcomes::Chance { chance, outcomes } => {
-                        let (immediate, mut pushed) = outcomes.get(rng.gen::<f32>() < chance);
-                        self.eventqueue.events.append(&mut pushed);
-                        immediate
+                    ReplaceOutcomes::Chance { chance, success, fail } => {
+                        if rng.gen::<f32>() < chance {success} else {fail} 
                     }
                 };
             }
@@ -189,26 +188,32 @@ impl Sim {
         };
 
         // ------------------------ Events Happen -----------------------------------------------------
+        self.game.last_log_message = event.message.to_string(&self.game);
+
+
+
         match event.event_type {
-            EventType::Damage {amount} => {
+            EventType::Damage (amount) => {
                 match event.target {
                     Entity::Delver { index } => {
                         self.game.delverteam.delvers[index].hp -= amount;
                         if self.game.delverteam.delvers[index].hp <= 0 {
-                            self.eventqueue.events.insert(0,EventType::Death.target(event.source,event.target));
+                            let event = Event {event_type:EventType::Death, source:event.source, target:event.target, message:Message::Death(event.target)};
+                            self.eventqueue.events.insert(0,event);
                         }
                     }
                     Entity::Defender {index} => {
                         let mut defender:&mut Defender = self.game.defenderteam.active_defenders.get_mut(index).unwrap();
                         defender.hp -= amount;
                         if defender.hp <= 0 {
-                            self.eventqueue.events.insert(0,EventType::Death.target(event.source,event.target));
+                            let event = Event {event_type:EventType::Death, source:event.source, target:event.target, message:Message::Death(event.target)};
+                            self.eventqueue.events.insert(0,event);
                         }
                     }
                     _ => ()
                 }
             }
-            EventType::Heal {amount } => {
+            EventType::Heal (amount) => {
                 match event.target {
                     Entity::Delver { index } => {
                         self.game.delverteam.delvers[index].hp += amount;
@@ -233,7 +238,7 @@ impl Sim {
                         self.game.delverteam.delvers[index].active = false;
                         let alive_delvers = self.game.delverteam.active_delvers();
                         if alive_delvers.len() == 0 {
-                            self.eventqueue.events.insert(0,EventType::EndGame.no_target_no_source());
+                            self.eventqueue.events.insert(0,Event::type_only(EventType::EndGame));
                         }
                     }
                     Entity::Defender {index} => {
@@ -246,19 +251,19 @@ impl Sim {
                     _ => ()
             }
             }
-            EventType::Move {position } => {
+            EventType::Move (position ) => {
                 match event.target {
                     Entity::Delver { index } => {}
                     _ => {panic!("Invalid target")}
                 }
                 self.game.delver_position = position;
                 if self.game.delver_position.0 == self.game.rooms.len() as i8 { // temporary, need to implement new conditions. 
-                    self.eventqueue.events.insert(0,EventType::EndGame.no_target_no_source())
+                    self.eventqueue.events.insert(0,Event::type_only(EventType::EndGame));
                 }
             }
             EventType::StartBossFight => {
                 let defender = self.game.defenderteam.defender.clone().to_game_defender();
-                let message = self.game.delverteam.to_string() + " challenge " + &self.game.defenderteam.to_string() +"'s defender " + &defender.to_string();
+                let message = Message::Custom(self.game.delverteam.to_string() + " challenge " + &self.game.defenderteam.to_string() +"'s defender " + &defender.to_string());
                 self.eventqueue.log(message);
                 self.game.defenderteam.active_defenders.push(defender);
                 
@@ -275,15 +280,15 @@ impl Sim {
                 let mut pushes = outcomes.get(roll(rng, total_stat) > difficulty * rng.gen::<f32>());
                 self.eventqueue.events.append(&mut pushes);
             }
-            EventType::EndGame => {self.game.phase = GamePhase::Finished; self.eventqueue.log(String::from("Game Ended"));}
-            EventType::Log { message } => {
-                self.game.last_log_message = message;
-            }
-            EventType::Scene { scene } => {
-                let (message, difficulty, stat, outcomes) = scene.unpack();
-                self.eventqueue.events.push(EventType::Roll {difficulty, stat, outcomes }.no_target_no_source());
-                self.eventqueue.events.push(EventType::Log { message }.no_target_no_source());
-            }
+            EventType::EndGame => {self.game.phase = GamePhase::Finished; self.eventqueue.log(Message::Custom(String::from("Game Ended")));}
+            EventType::Log => (),
+                // self.game.last_log_message = message;
+            // }
+            // EventType::Scene { scene } => {
+            //     let (message, difficulty, stat, outcomes) = scene.unpack();
+            //     self.eventqueue.events.push(EventType::Roll {difficulty, stat, outcomes }.no_target_no_source());
+            //     self.eventqueue.events.push(EventType::Log { message }.no_target_no_source());
+            // }
             EventType::ClearRoom => {
                 let index =match event.target {
                     Entity::Room { index } => index,

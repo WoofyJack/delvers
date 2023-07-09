@@ -13,6 +13,7 @@ mod modifiers;
 mod core_loop;
 mod events;
 
+mod messaging;
 mod combat;
 
 use std::fs;

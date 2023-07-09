@@ -5,8 +5,8 @@ use std::fmt;
 use rand::Rng;
 
 use crate::{sim::Game,
-    events::{EventType,EventQueue, Scene, Entity}, 
-    teams::Stats};
+    events::{Event, EventType,EventQueue, Entity,Outcomes}, 
+    teams::Stats, messaging::Message};
 
 #[derive(Serialize, Deserialize)]
 pub struct Room {
@@ -57,14 +57,18 @@ mod trapped {
         let trigger_delver = Entity::Delver { index: trigger_index};
 
 
-        let begin = delver.to_string(game) + " attempts to disarm a trap.";
-        let success = (EventType::ClearRoom.target(delver,room),
-                                        delver.to_string(game) + " disarms the traps");
-        let fail = (EventType::Damage {amount: 1 }.target(room,trigger_delver),
-            trigger_delver.to_string(game) + " triggers a trap room, hurting themselves");
-        let scene = Box::new(Scene {begin, difficulty:0.8, stat:base_stat(), success, fail});
+        let message = Message::Custom(delver.to_string(game) + " disarms the traps");
+        let success = vec![Event{ event_type:EventType::ClearRoom, source:delver, target:room, message}];
 
-        queue.events.push(EventType::Scene { scene }.no_target(room));
+        let message = Message::Custom(trigger_delver.to_string(game) + " triggers a trap room, hurting themselves");
+        let fail = vec![Event{event_type:EventType::Damage (1), source:room, target:trigger_delver, message}];
+        
+        let outcomes = Outcomes {success, fail};
+
+        let message = Message::Custom(delver.to_string(game) + " attempts to disarm a trap.");
+        let event = Event::type_and_message(EventType::Roll { difficulty: 0.8, stat: base_stat(), outcomes}, message);
+
+        queue.events.push(event);
     }
     pub fn base_stat() -> Stats {
         Stats::Fightiness
@@ -74,9 +78,9 @@ mod trapped {
 mod bossfight{
     use crate::locations::*;
     pub fn attempt_clear(_game:&Game,  room:Entity, delver:Entity, queue:&mut EventQueue) {
-        let event = EventType::StartBossFight.no_target(room);
+        let event = Event{event_type:EventType::StartBossFight, source:room, target:Entity::None, message:Message::None};
         queue.events.push(event);
-        let event = EventType::ClearRoom.target(delver, room);
+        let event = Event{event_type:EventType::ClearRoom, source:delver, target: room, message:Message::None};
         queue.events.push(event);
     }
     pub fn base_stat() -> Stats {
@@ -89,15 +93,18 @@ mod arcane_ward {
         let trigger_index = game.rand_target;
         let trigger_delver = Entity::Delver { index: trigger_index};
 
+        let message = Message::Custom(delver.to_string(game) + " clears the arcane ward");
+        let success = vec![Event{ event_type:EventType::ClearRoom, source:delver, target:room, message}];
 
-        let begin = delver.to_string(game) + " attempts to clear an arcane ward.";
-        let success = (EventType::ClearRoom.target(delver, room)
-                                                        ,delver.to_string(game) + " clears the arcane ward");
-        let fail = (EventType::Damage {amount: 2 }.target(room, trigger_delver),
-                                                        trigger_delver.to_string(game) + " is exploded by a magical wrad.");
-        let scene = Box::new(Scene {begin, difficulty:0.6, stat:base_stat(), success, fail});
+        let message = Message::Custom(trigger_delver.to_string(game) + " is exploded by a magical wrad.");
+        let fail = vec![Event{event_type:EventType::Damage (2), source:room, target:trigger_delver, message}];
+        
+        let outcomes = Outcomes {success, fail};
 
-        queue.events.push(EventType::Scene { scene }.no_target(room));
+        let message = Message::Custom(delver.to_string(game) + " attempts to clear an arcane ward.");
+        let event = Event::type_and_message(EventType::Roll { difficulty: 0.8, stat: base_stat(), outcomes}, message);
+
+        queue.events.push(event);
     }
     pub fn base_stat() -> Stats {
         Stats::Magiciness

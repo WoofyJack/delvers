@@ -6,7 +6,7 @@ use crate::locations::{Coordinate, Room};
 use crate::teams::{Stats};
 use crate::events::{Entity, Event, EventType, Outcomes};
 use crate::sim::{Sim, roll};
-
+use crate::messaging::Message;
 
 #[derive(PartialEq, Eq, Serialize, Deserialize)]
 pub enum GamePhase {
@@ -30,7 +30,7 @@ pub fn tick(sim: &mut Sim, rng:&mut impl Rng) -> () {
         GamePhase::NotStarted => {
             sim.game.phase = GamePhase::Encounter;
 
-            let message = sim.game.delverteam.to_string() + " are delving into " + &sim.game.defenderteam.to_string() +"'s dungeon " + &sim.game.defenderteam.dungeon.to_string();
+            let message = Message::Delving;
             sim.eventqueue.log(message);
         }
         GamePhase::TurnStart => {
@@ -76,17 +76,17 @@ pub fn tick(sim: &mut Sim, rng:&mut impl Rng) -> () {
             let position = sim.game.delver_position + Coordinate(1,0);
 
             let message = active_delver.to_string(&sim.game) + " guides the delvers to " + &position.to_string();
-            let success = Event::comment_event(EventType::Move {position}.target(Entity::None, active_delver), message);
+            let message = Message::Travel (active_delver, position);
+            let success = vec![Event {event_type:EventType::Move(position), source:Entity::None, target:active_delver, message}];
             
-            let message = active_delver.to_string(&sim.game) + " hurts themselves while navigating.";
-            let fail = Event::comment_event(EventType::Damage {amount: 1}.target(Entity::None, active_delver), message);
+            let message = Message::FailedNavigation (active_delver);
+            let fail = vec![Event {event_type:EventType::Damage(1), target:active_delver, source:Entity::None, message}];
             
             let outcomes = Outcomes{success, fail};
-            let event = EventType::Roll { difficulty: sim.game.defenderteam.dungeon.lengthiness, stat: Stats::Exploriness, outcomes}.no_target_no_source();
+            let message = Message::BeginNavigation(active_delver);
+            let event = Event::type_and_message(EventType::Roll { difficulty: sim.game.defenderteam.dungeon.lengthiness, stat: Stats::Exploriness, outcomes}, message);
             sim.eventqueue.events.push(event);
 
-            let message = active_delver.to_string(&sim.game) + " begins searching for a way forward.";
-            sim.eventqueue.events.push(EventType::Log { message }.no_target_no_source());
         }
         GamePhase::Finished => {}
         GamePhase::Combat {source, target} => {
@@ -98,18 +98,18 @@ pub fn tick(sim: &mut Sim, rng:&mut impl Rng) -> () {
             let source_name = source.to_string(&sim.game);
             let target_name = target.to_string(&sim.game);
             
-            let message = format!("{} attacks {}", source_name, target_name);
 
             if roll(rng, source_stat) > roll(rng, target_stat) { //  Attack succeeds
-                let message = format!("{} injures {}", source_name, target_name);
-                sim.eventqueue.events.push(EventType::Log { message }.no_target_no_source());
-                sim.eventqueue.events.push (EventType::Damage { amount: 1 }.target(source, target))
+                let message = Message::Attack(source, target, 1);
+                let event = Event {event_type:EventType::Damage(1), source, target, message };
+                sim.eventqueue.events.push(event);
             } else { // Attack fails
-                let message = format!("{} injures {}", target_name, source_name);
-                sim.eventqueue.events.push(EventType::Log { message }.no_target_no_source());
-                sim.eventqueue.events.push (EventType::Damage { amount: 1 }.target(target, source))
+                let message = Message::Attack(target, source, 1);
+                let event: Event = Event {event_type:EventType::Damage(1), target:source, source:target, message };
+                sim.eventqueue.events.push(event);
             }
-            sim.eventqueue.events.push(EventType::Log { message }.no_target_no_source());
+            let message = Message::Custom(format!("{} attacks {}", source_name, target_name));
+            sim.eventqueue.log(message);
         }
     }
 }

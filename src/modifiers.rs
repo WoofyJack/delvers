@@ -4,21 +4,27 @@ use serde::{Serialize, Deserialize};
 use crate::events::{Event, EventType, EventQueue, Entity, OutcomesWithImmediate};
 use crate::sim::Game;
 use crate::teams::{Stats};
-
+use crate::messaging::Message;
 
 pub struct ModToApply <'a> {
     pub modifier: &'a BaseModifier,
     pub relation: ModRelation
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum ModRelation {
     Target, Source
+}
+pub enum ReplaceOutcomes{
+    Stop,
+    Event {event:Event},
+    Chance {chance:f32, success:Event, fail:Event}
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum BaseModifier {
     Pheonix,
-    DoubleOrNothing
+    DoubleOrNothing,
+    CheeseThirst
 }
 impl BaseModifier {
     pub fn replace_event(&self, event:Event, relation:ModRelation, game:&Game, queue:&mut EventQueue) -> ReplaceOutcomes {
@@ -28,8 +34,9 @@ impl BaseModifier {
             _ => ReplaceOutcomes::Event {event}
         }
     }
-    pub fn pre_event(&self, _event:&Event, relation:ModRelation,  _game:&Game, _queue:&mut EventQueue) {
+    pub fn pre_event(&self, event:&Event, relation:ModRelation,  game:&Game, queue:&mut EventQueue) {
         match self {
+            BaseModifier::CheeseThirst => CheeseThirst::pre_event(event, relation, game, queue),
             _ => ()
         }
     }
@@ -47,22 +54,18 @@ mod Pheonix {
             _ => return ReplaceOutcomes::Event {event}
         };
 
-        let target_name = match event.target {
-            Entity::Delver { index } => game.delverteam.delvers[index].to_string(),
-            Entity::Defender { index } => game.defenderteam.active_defenders[index].to_string(),
-            _ => "".to_string()
-        };
-        let failmessage = target_name.clone() + "'s Pheonix fails. Their ashes scatter to the wind.";
-        let successmessage= target_name + "'s Pheonix activates. They are reborn from their ashes!";
         match event.event_type {
             EventType::Death => {
-                let outcomes = OutcomesWithImmediate{
-                immediate_success:EventType::Heal {amount: 5 }.target(event.target,event.target),
-                immediate_fail: event,
-                fail:vec![EventType::Log {message:failmessage}.no_target_no_source()],
-                success:vec![EventType::Log { message: successmessage}.no_target_no_source(), ]
-                };
-                ReplaceOutcomes::Chance { chance: 0.25, outcomes: outcomes }
+                let target_name = event.target.to_string(game);
+                let message = Message::Custom(target_name.clone() + "'s Pheonix activates. They are reborn from their ashes!");
+                let success = Event {event_type:EventType::Heal (5), target:event.target, source:event.target, message};
+                
+                let message = Message::Custom(target_name + "'s Pheonix fails. Their ashes scatter to the wind.");
+                let mut fail = event;
+                fail.message = message; 
+
+
+                ReplaceOutcomes::Chance { chance: 0.25, success, fail }
             },
             _ => ReplaceOutcomes::Event {event}
         }
@@ -77,10 +80,10 @@ mod DoubleOrNothing {
         //     _ => return ReplaceOutcomes::Event {event}
         // };
         match event.event_type {
-            EventType::Damage { amount } => {
+            EventType::Damage (amount ) => {
                 // let message = self_name + " doubles the risk";
                 // queue.log(message);
-                let event = EventType::Damage { amount:amount+1 }.target(event.source, event.target);
+                let event = Event{event_type:EventType::Damage (amount+1), source:event.source, target:event.target, message:Message::None};
                 ReplaceOutcomes::Event { event }
             },
             _ => ReplaceOutcomes::Event {event}
@@ -88,8 +91,18 @@ mod DoubleOrNothing {
     }
 }
 
-pub enum ReplaceOutcomes{
-    Stop,
-    Event {event:Event},
-    Chance {chance:f32, outcomes:OutcomesWithImmediate}
+mod CheeseThirst {
+    use crate::modifiers::*;
+    pub fn pre_event(event:&Event, relation:ModRelation,  game:&Game, queue:&mut EventQueue) {
+        if relation == ModRelation::Source {
+        match event.event_type {
+            EventType::Death => {
+                let message = Message::Custom(format!("{} devours their cheese", event.source.to_string(game)));
+                let event = Event {event_type:EventType::Heal(2), target:event.source, source:event.source, message};
+                queue.events.push(event);
+            },
+            _ => ()
+        }
+    }
+    }
 }
