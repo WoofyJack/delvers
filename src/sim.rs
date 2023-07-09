@@ -73,7 +73,7 @@ impl Sim {
 
     
     pub fn render(&self) {
-        let waittime = time::Duration::from_secs(0);
+        let waittime = time::Duration::from_secs(1);
         for p in &self.game.delverteam.delvers {
             let delvername =p.to_string();
             print!("{}: ",delvername);
