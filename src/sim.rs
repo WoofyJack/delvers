@@ -6,12 +6,12 @@ use rand_pcg::Pcg32;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::room_types::{Coordinate};
+use crate::room_types::{Coordinate, RoomType};
 use crate::messaging::Message;
 use crate::modifiers::{ReplaceOutcomes, ModToApply, ModRelation};
 use crate::entities::{Entity, Room, Stats, Delver, Defender, DelverTeam, DefenderTeam, Dungeon};
 use crate::events::{EventQueue, Event, EventType, Outcomes};
-use crate::core_loop::{GamePhase};
+use crate::core_loop::GamePhase;
 
 use std::collections::HashMap;
 
@@ -35,9 +35,11 @@ pub struct Game {
     pub delverteam:DelverTeam,
     pub defenderteam:DefenderTeam,
     
-    #[serde_as(as = "Vec<(_, _)>")]
-    pub rooms: HashMap<Coordinate, Room>,
-    pub delver_position:Coordinate,
+    // #[serde_as(as = "Vec<(_, _)>")]
+    // pub room: HashMap<Coordinate, Room>,
+    pub current_room:Room,
+    pub depth:i8,
+    // pub delver_position:Coordinate,
 
     pub last_log_message:String,
     pub rand_target:usize,
@@ -45,11 +47,11 @@ pub struct Game {
 
 
 impl Game {
-    pub fn new_game(delverteam:DelverTeam, defenderteam:DefenderTeam, rooms: HashMap<Coordinate,Room>) -> Game {
+    pub fn new_game(delverteam:DelverTeam, defenderteam:DefenderTeam) -> Game {
         Game {phase:GamePhase::NotStarted,
-            delverteam, defenderteam, 
-            rooms,
-            delver_position: Coordinate(0,0),
+            delverteam, defenderteam,
+            current_room:Room {complete:false, room_type:RoomType::Empty},
+            depth:0,
             last_log_message:String::from(""),
             rand_target:0
         }
@@ -75,6 +77,22 @@ impl Sim {
     
     pub fn render(&self) {
         let waittime = time::Duration::from_secs(1);
+        
+        // Rooms
+        // let mut from_room = false;
+        // for x in 0..10 {
+        //     let coord = &Coordinate(x, 0);
+        //     if self.game.rooms.contains_key(coord) {
+        //         if from_room {print!("---")}
+        //         from_room = true;
+        //         print!("{}",self.game.rooms[coord].to_string());
+        //     } else{
+        //         print!("  ")
+        //     };
+        // }
+        // println!("");
+
+        // Delver Names + Hp.
         for p in &self.game.delverteam.delvers {
             let delvername =p.to_string();
             print!("{}: ",delvername);
@@ -91,9 +109,9 @@ impl Sim {
             }
             println!();
         }
+        // Defender Names + Hp.
         for p in &self.game.defenderteam.active_defenders{
-            // let p = &self.game.defenderteam.defender;
-            let delvername = if p.active {p.to_string().normal()} else {p.to_string().truecolor(100,100,100)};
+            let delvername = p.to_string();
             print!("{}: ",delvername);
 
             let active = "O".red();
@@ -110,6 +128,7 @@ impl Sim {
         }
         println!("{}", self.game.last_log_message);
         
+        // Printout events, can be enabled for debugging
         // for e in &self.eventqueue.events {
         //     print!("{:?}", e.event_type);
         // }
@@ -252,14 +271,16 @@ impl Sim {
                     _ => ()
             }
             }
-            EventType::Move (position ) => {
+            EventType::Delve => {
                 match event.source {
-                    Entity::Delver { index } => {}
-                    _ => {panic!("Invalid target")}
+                    Entity::Delver {..} => {}
+                    _ => {panic!("Invalid source")}
                 }
-                self.game.delver_position = position;
-                if self.game.delver_position.0 == self.game.rooms.len() as i8 { // temporary, need to implement new conditions. 
-                    self.eventqueue.events.insert(0,Event::type_only(EventType::EndGame));
+                self.game.depth += 1;
+                match self.game.depth {
+                    5 => self.eventqueue.events.push(Event::type_only(EventType::StartBossFight)),
+                    6.. => self.eventqueue.events.insert(0,Event::type_only(EventType::EndGame)),
+                    _ => self.game.current_room = Room::new_room(rng)
                 }
             }
             EventType::StartBossFight => {
@@ -270,11 +291,12 @@ impl Sim {
                 self.eventqueue.log(message);
                 self.game.defenderteam.active_defenders.push(defender);
                 
-            }
+            },
+            EventType::ClearRoom => { self.game.current_room.complete = true;}
             EventType::Tick => {
                 crate::core_loop::tick(self, rng);
             }
-            //  -------------------- Complex events: Cannot be accessed afterwards, because their insides are often consumed. -------------
+            //  -------------------- Complex events: Cannot be accessed afterwards, because their insides are consumed. -------------
             EventType::SpawnDefender (defender) => {
                 self.game.defenderteam.active_defenders.push(defender);
             }
@@ -292,12 +314,6 @@ impl Sim {
             }
             EventType::EndGame => {self.game.phase = GamePhase::Finished; self.eventqueue.log(Message::Custom(String::from("Game Ended")));}
             EventType::Log => (),
-            EventType::ClearRoom => {
-                let index =match event.target {
-                    Entity::Room { index } => index,
-                    _ => panic!("Invalid Target"),
-                };
-                self.game.rooms.get_mut(&index).unwrap().complete = true;}
             EventType::Cancelled => ()
         }
         }

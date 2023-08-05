@@ -13,18 +13,17 @@ pub enum GamePhase {
     NotStarted,
     TurnStart,
     Encounter,
-    Forge,
-    Travel,
+    Delve,
     Finished,
     Combat {source:Entity, target:Entity}
 }
 
 pub fn tick(sim: &mut Sim, rng:&mut impl Rng) -> () {
-    let current_room: &Room = 
-    match sim.game.rooms.get(&sim.game.delver_position) { //Checks for if off-map
-        Some(n) => n,
-        None => {sim.game.delver_position = Coordinate(0,0); return tick(sim, rng)} //TODO: Replace with some special case room, a la hall of flames.
-    };
+    // let current_room: &Room = 
+    // // match sim.game.rooms.get(&sim.game.delver_position) { //Checks for if off-map
+    // //     Some(n) => n,
+    // //     None => {sim.game.delver_position = Coordinate(0,0); return tick(sim, rng)} //TODO: Replace with some special case room, a la hall of flames.
+    // // };
 
     match sim.game.phase {
         GamePhase::NotStarted => {
@@ -53,32 +52,26 @@ pub fn tick(sim: &mut Sim, rng:&mut impl Rng) -> () {
             }
         }
         GamePhase::Encounter => {
-            if current_room.complete {sim.game.phase = GamePhase::Forge;}
+            if sim.game.current_room.complete {sim.game.phase = GamePhase::Delve;}
             else {
                 sim.game.phase = GamePhase::TurnStart;
-                // Do encounter rolls
-                // DO IMMEDIATE FIX
-                let base_stat = current_room.room_type.base_stat();
+                let base_stat = sim.game.current_room.room_type.base_stat();
                 let active_delver = sim.game.delverteam.choose_delver(base_stat);
-                let room = Entity::Room { index: sim.game.delver_position};
-                current_room.room_type.attempt_clear(&sim.game, room, active_delver, &mut sim.eventqueue);
+                let room = Entity::Room;
+                sim.game.current_room.room_type.attempt_clear(&sim.game, room, active_delver, &mut sim.eventqueue);
         }
         }
-        GamePhase::Forge => {
-            sim.game.phase = GamePhase::Travel;
-            //Do forging stuff
-        }
-        GamePhase::Travel => {
+        GamePhase::Delve => {
             sim.game.phase = GamePhase::TurnStart;
             // Do Travel stuff
             let active_delver = sim.game.delverteam.choose_delver(Stats::Exploriness);
 
-            let position = sim.game.delver_position + Coordinate(1,0);
+            // let position = sim.game.delver_position + Coordinate(1,0);
 
-            let message = Message::Travel (active_delver, position);
-            let success = vec![Event {event_type:EventType::Move(position), source:active_delver, target:Entity::None, message}];
+            let message = Message::Delve(active_delver);
+            let success = vec![Event {event_type:EventType::Delve, source:active_delver, target:Entity::None, message}];
             
-            let message = Message::FailedNavigation (active_delver);
+            let message = Message::FailedDelve (active_delver);
             let fail = vec![Event {event_type:EventType::Damage(1), target:active_delver, source:Entity::Dungeon, message}];
             
             let outcomes = Outcomes{success, fail};

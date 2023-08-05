@@ -17,7 +17,7 @@ pub enum Stats {
 pub enum Entity { // Losely defined as "Something that can have modifiers and be targetted by stuff"
     Delver {index:usize},
     Defender {index:usize},
-    Room {index:Coordinate},
+    Room,
     Dungeon,
     DelverTeam,
     DefenderTeam,
@@ -46,8 +46,8 @@ impl Entity {
     }
     pub fn collect_stats(&self, game:&Game, stat:Stats) -> f32 {
         match self {
-            Entity::Delver {index} => Delver::collect_stats(self, &game.delverteam.delvers, stat),
-            Entity::Defender{index} =>  Defender::collect_stats(self, &game.defenderteam.active_defenders, stat),
+            Entity::Delver {..} => Delver::collect_stats(self, &game.delverteam.delvers, stat),
+            Entity::Defender{..} =>  Defender::collect_stats(self, &game.defenderteam.active_defenders, stat),
             _ => panic!("Expected delver or defender")
         }
     }
@@ -163,6 +163,8 @@ impl fmt::Display for Defender {
     }
 }
 
+
+// ------------------ Room -----------------------
 #[derive(Serialize, Deserialize)]
 pub struct Room {
     pub complete:bool,
@@ -180,7 +182,14 @@ impl Room {
             _ => panic!("Fix the rng range"),
         };
 
-        Room {complete: false, room_type}
+        Room {complete: false, room_type} 
+    }
+    pub fn to_string(&self) -> String {
+        if self.complete {
+            "[X]".to_string()
+        } else {
+            "[ ]".to_string()
+        }
     }
 }
 

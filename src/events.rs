@@ -28,7 +28,7 @@ impl Event {
 pub enum EventType {
     Damage (i8), //amount
     Heal (i8), //amount
-    Move (Coordinate), //Destination
+    Delve,
     Death,
     EndGame,
     Log, // Do nothing, still log.
@@ -40,17 +40,6 @@ pub enum EventType {
     SpawnDefender (Defender),
     Tick, // Continue with core game loop. TO IMPLEMENT: Should probably error if Message is not None
     Cancelled //"Do nothing" event. TO IMPLEMENT: Should probably error if Message is not None
-}
-impl EventType {
-    // pub fn no_target_no_source(self) -> Event {
-    //     Event {event_type:self, target:Entity::None, source:Entity::None, message:Message::None}
-    // }
-    // pub fn no_target(self, source:Entity) -> Event {
-    //     Event {event_type:self, target:Entity::None, source, message:Message::None}
-    // }
-    // pub fn target(self, source:Entity, target:Entity) -> Event {
-    //     Event {event_type:self, target:target ,source, message:Message::None}
-    // }
 }
 
 #[derive(Serialize, Deserialize)]

@@ -1,4 +1,3 @@
-
 use serde::{Serialize, Deserialize};
 
 use crate::events::{Event, EventType, EventQueue, OutcomesWithImmediate};
@@ -12,7 +11,9 @@ pub struct ModToApply <'a> {
 }
 #[derive(Clone, Copy, PartialEq)]
 pub enum ModRelation {
-    Target, Source
+    Target, Source,
+    Team,
+    // FriendlyDungeon, EnemyDungeon
 }
 pub enum ReplaceOutcomes{
     Stop,
@@ -48,6 +49,7 @@ impl BaseModifier {
         }
     }
 }
+
 
 
 mod pheonix {
@@ -98,7 +100,7 @@ mod trail_blazer {
     pub fn replace_event(event:Event, relation:ModRelation, game:&Game, _queue:&mut EventQueue) -> ReplaceOutcomes {
         if relation == ModRelation::Source {
             match event.event_type {
-                EventType::Move(..) => (),
+                EventType::Delve => (),
                 _ => return ReplaceOutcomes::Event { event }
             }
             let mut event = event;
@@ -110,7 +112,7 @@ mod trail_blazer {
     pub fn pre_event(event:&Event, relation:ModRelation,  game:&Game, queue:&mut EventQueue) {
         if relation == ModRelation::Source {
         match event.event_type {
-            EventType::Move (..) => {
+            EventType::Delve => {
                 let success = Box::new(Event::cancelled());
                 
                 let message = Message::Custom(format!("{} burns up slightly.", event.source.to_string(game)));
@@ -130,3 +132,138 @@ mod trail_blazer {
         }
     }
 }
+
+
+
+
+#[derive(Debug,Deserialize, Serialize)]
+enum GenericEntity {
+    Source,
+    Target,
+    None
+}
+impl GenericEntity {
+    fn to_entity(&self, triggering_event:&Event) -> Entity {
+        match self {
+            GenericEntity::Target => triggering_event.target,
+            GenericEntity::Source => triggering_event.source,
+            GenericEntity::None => Entity::None
+        }
+    }
+}
+#[derive(Debug,Deserialize, Serialize)]
+enum GenericString {
+    Phrase(String),
+    EntityName(GenericEntity)
+}
+impl GenericString {
+    fn to_string(&self, triggering_event:&Event, game:&Game) -> String {
+        match self {
+            GenericString::Phrase(str) => str.clone(),
+            GenericString::EntityName(entity) => entity.to_entity(triggering_event).to_string(game)
+        }
+    }
+}
+#[derive(Debug,Deserialize, Serialize)]
+enum GenericMessage {
+    Default (Message),
+    Custom (Vec<GenericString>)
+}
+impl GenericMessage {
+    fn to_message(self, triggering_event:&Event, game:&Game) -> Message {
+        match self {
+            GenericMessage::Default(message) => message,
+            GenericMessage::Custom(strings) => {
+                let mut base = String::new();
+                for i in strings {
+                    base += &i.to_string(triggering_event, game)
+                };
+                Message::Custom(base)
+            }
+        }
+    }
+}
+
+#[derive(Debug,Deserialize, Serialize)]
+struct GenericEvent {
+    target:GenericEntity,
+    source:GenericEntity,
+    message:GenericMessage,
+    event_type:EventType
+}
+
+impl GenericEvent {
+    fn to_event(self, triggering_event:&Event, game:&Game) -> Event{
+        Event { target: self.target.to_entity(triggering_event),
+                source: self.source.to_entity(triggering_event),
+                message:self.message.to_message(triggering_event, game),
+                event_type: self.event_type}
+    }
+}
+#[derive(Debug,Deserialize, Serialize)]
+enum GenericReplace {
+    AlwaysReplace{event_type:EventType, replace_with:GenericEvent},
+    ChanceReplace{event_type:EventType, replace_with:GenericEvent, else_message:GenericMessage, chance:f32},
+}
+
+#[derive(Debug,Deserialize, Serialize)]
+enum GenericPre {
+    AlwaysEvent (GenericEvent),
+    ChanceEvent (GenericEvent,GenericEvent, f32)
+}
+#[derive(Debug,Deserialize, Serialize)]
+enum GenericGet {
+
+}
+#[derive(Debug,Deserialize, Serialize)]
+pub struct GenericModifier {
+    replaces:Vec<GenericReplace>,
+    pres:Vec<GenericPre>,
+    gets:Vec<GenericGet>
+}
+
+use std::mem::discriminant;
+fn apply_generic_replace (triggering_event:Event, modifier:GenericReplace, game:&Game) -> ReplaceOutcomes {
+    match modifier {
+        GenericReplace::AlwaysReplace { event_type, replace_with } => {
+            if discriminant(&replace_with.event_type) == discriminant(&event_type) {
+                return ReplaceOutcomes::Event {event:replace_with.to_event(&triggering_event, game)};
+            }
+        }
+        GenericReplace::ChanceReplace { event_type, replace_with, else_message, chance } => {
+            if discriminant(&event_type) == discriminant(&event_type) {
+                let success = replace_with.to_event(&triggering_event, game);
+                let mut fail = triggering_event;
+                fail.message = else_message.to_message(&fail, game);
+                return ReplaceOutcomes::Chance { chance, success, fail};
+            }
+        }
+    };
+    return ReplaceOutcomes::Event { event:triggering_event }
+}
+
+
+pub fn example_event() -> GenericModifier {
+    use GenericEntity::*;
+    use EventType::*;
+    use GenericString::*;
+
+    let mut replaces = Vec::new();
+    
+    let message = GenericMessage::Custom(vec![EntityName(Source), Phrase("'s Pheonix activates. They are reborn from their ashes!".to_string())]);
+    let replace_with = GenericEvent {event_type:Heal(5), target:Target, source:Target, message};
+    let else_message = GenericMessage::Custom(vec![EntityName(Source), Phrase("'s Pheonix fails. Their ashes scatter to the wind.".to_string())]);
+
+    let modifier = GenericReplace::ChanceReplace{event_type:EventType::Death, chance:0.25, replace_with, else_message};
+
+    println!("{}",serde_json::to_string_pretty(&modifier).unwrap());
+
+    replaces.push(modifier);
+    let pres = Vec::new();
+    let gets = Vec::new();
+    GenericModifier { replaces, pres, gets }
+}
+
+// pub fn human_to_modifier() {
+//     let human = "{"name":}"
+// }

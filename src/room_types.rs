@@ -10,30 +10,43 @@ use crate::entities::{Stats, Defender, Entity};
 
 #[derive(Serialize, Deserialize)]
 pub enum RoomType {
+    Empty,
     Trapped,
     Arcane,
     BossFight,
     Fight {monsters:Vec<Monster>, partyname:String}
 }
 impl RoomType {
-    fn on_enter(&self, _game:&Game,  room:Entity, _queue:&mut EventQueue) {}
+    fn on_enter(&self, _game:&Game,  _room:Entity, _queue:&mut EventQueue) {}
     pub fn attempt_clear(&self, game:&Game,  room:Entity, delver:Entity, queue:&mut EventQueue) {
         // queue.events.push(EventType::ClearRoom.target(delver,room));
         match self {
+            RoomType::Empty => {empty::attempt_clear(game, room, delver, queue)}
             RoomType::Arcane => {arcane_ward::attempt_clear(game, room, delver, queue)}
             RoomType::Trapped => {trapped::attempt_clear(game, room, delver, queue)}
             RoomType::BossFight => {bossfight::attempt_clear(game, room, delver, queue)}
             RoomType::Fight {monsters, partyname} => {fight::attempt_clear(game, room, delver, queue, monsters, partyname.clone())}
         }
     }
-    fn on_exit(&self, _game:&Game,  room:Entity, _queue:&mut EventQueue) {}
+    fn on_exit(&self, _game:&Game,  _room:Entity, _queue:&mut EventQueue) {}
     pub fn base_stat(&self) -> Stats {
         match self {
+            RoomType::Empty => empty::base_stat(),
             RoomType::Arcane => arcane_ward::base_stat(),
             RoomType::Trapped => trapped::base_stat(),
             RoomType::BossFight => bossfight::base_stat(),
             RoomType::Fight { .. } => fight::base_stat()
         }
+    }
+}
+mod empty {
+    use crate::room_types::*;
+    pub fn attempt_clear(_game:&Game,  room:Entity, delver:Entity, queue:&mut EventQueue) {
+        let event = Event{ event_type:EventType::ClearRoom, source:delver, target:room, message:Message::None};
+        queue.events.push(event);
+    }
+    pub fn base_stat() -> Stats {
+        Stats::Fightiness
     }
 }
 
@@ -76,7 +89,7 @@ mod bossfight{
 }
 mod fight {
     use crate::room_types::*;
-    pub fn attempt_clear(game:&Game,  room:Entity, delver:Entity, queue:&mut EventQueue, monsters:&Vec<Monster>, partyname:String) {
+    pub fn attempt_clear(_game:&Game,  room:Entity, delver:Entity, queue:&mut EventQueue, monsters:&Vec<Monster>, partyname:String) {
         let mut monsters = (*monsters).clone();
         
         let event = Event{event_type:EventType::ClearRoom, source:delver, target: room, message:Message::None};

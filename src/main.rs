@@ -31,7 +31,6 @@ use crate::base_entities::{BaseTeam, BaseDefender};
 use crate::entities::{DelverTeam, DefenderTeam};
 use crate::room_types::{Coordinate, RoomType};
 use crate::sim::{Game, Sim};
-use crate::entities::{Room};
 
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
@@ -74,15 +73,8 @@ fn main() {
     
     let team2 = BaseTeam::load_from_file("Teams.json", 1);
     let defender_team = DefenderTeam::load_team(&team2);
-    
-    let mut rooms: HashMap<Coordinate, Room> = HashMap::new();
-    for i in 0..5 {
-        rooms.insert(Coordinate(i,0), Room::new_room(&mut rng));
-    }
-    let room = Room {complete:false, room_type:RoomType::BossFight};
-    rooms.insert(Coordinate(rooms.len() as i8, 0), room);
 
-    let game = Game::new_game(delver_team, defender_team, rooms);
+    let game = Game::new_game(delver_team, defender_team);
     let mut sim = Sim {game, finished:false, eventqueue:EventQueue::new_queue()};
     // println!("{} are delving into the {}'s dungeon, {}", team1.to_string(), team2.to_string(), team2.dungeon.to_string());
 
